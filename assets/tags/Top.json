@@ -1,0 +1,78 @@
+{
+    "상의": {
+        "bandeau": "반두",
+        "underbust": "언더버스트",
+        "crop_top": "크롭탑",
+        "bustier": "뷔스티에",
+        "blouse": "블라우스",
+        "criss_cross_halter": "크리스크로스 홀터",
+        "waistcoat": "웨이스트코트",
+        "vest": "조끼",
+        "cardigan": "가디건",
+        "cardigan_vest": "가디건 조끼",
+        "camisole": "캐미솔",
+        "corset": "코르셋",
+        "tank_top": "탱크탑",
+        "tube_top": "튜브탑",
+        "halterneck": "홀터넥"
+    },
+    "셔츠": {
+        "shirtf": "셔츠",
+        "t_shirt": "티셔츠",
+        "frilled_shirt": "프릴 셔츠",
+        "collared_shirt": "칼라 셔츠",
+        "dress_shirt": "드레스 셔츠",
+        "striped_shirt": "줄무늬 셔츠",
+        "sleeveless_shirt": "민소매 셔츠",
+        "compression_shirt": "컴프레션 셔츠",
+        "off_shoulder_shirt": "오프숄더 셔츠"
+    },
+    "스웨터": {
+        "sweater": "스웨터",
+        "pullover": "풀오버",
+        "turtleneck": "터틀넥",
+        "sweater_vest": "스웨터 조끼",
+        "sweater_dress": "스웨터 드레스",
+        "ribbed_sweater": "골지 스웨터",
+        "aran_sweater": "아란 스웨터",
+        "sleeveless_turtleneck": "민소매 터틀넥"
+    },
+    "재킷": {
+        "jacket": "재킷",
+        "blazer": "블레이저",
+        "cropped_jacket": "크롭 재킷",
+        "letterman_jacket": "레터맨 재킷",
+        "safari_jacket": "사파리 재킷",
+        "suit_jacket": "정장 재킷",
+        "sukajan": "스카잔",
+        "trench_coat": "트렌치 코트"
+    },
+    "코트": {
+        "coat": "코트",
+        "overcoat": "오버코트",
+        "raincoat": "레인코트",
+        "tailcoat": "테일코트",
+        "duffel_coat": "더플 코트",
+        "long_coat": "롱코트",
+        "peacoat": "피코트",
+        "fur_coat": "모피 코트",
+        "fur_trimmed_coat": "털 장식 코트"
+    },
+    "후드": {
+        "hoodie": "후드티",
+        "cropped_hoodie": "크롭 후드티",
+        "polka_dot_hoodie": "물방울 무늬 후드티",
+        "print_hoodie": "프린트 후드티",
+        "sleeveless_hoodie": "민소매 후드티",
+        "striped_hoodie": "줄무늬 후드티"
+    },
+    "겉옷": {
+        "apron": "앞치마",
+        "robe": "로브",
+        "bathrobe": "목욕 가운",
+        "open_robe": "열린 로브",
+        "cape": "망토",
+        "capelet": "케이플릿",
+        "shoulder_cape": "어깨 망토"
+    }
+}

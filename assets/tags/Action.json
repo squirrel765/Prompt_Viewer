@@ -1,0 +1,79 @@
+{
+  "표정 관련": {
+    "Happy_face": "행복한 표정",
+    "Surprised_face": "놀란 표정",
+    "Smiling_face": "미소 짓는 표정",
+    "Touched_face": "감동받은 표정",
+    "Worried_face": "걱정스러운 표정",
+    "Scary_face": "무서운 표정",
+    "Sad_face": "슬픈 표정",
+    "Angry_face": "화난 표정",
+    "Embarrassed_face": "당황하거나 부끄러운 표정",
+    "Confused_face": "혼란스러운 표정",
+    "Joyful_face": "기쁨에 찬 표정",
+    "Determined_face": "결의에 찬 표정",
+    "Crying_face": "우는 표정",
+    "Gloomy_face": "침울한 표정"
+  },
+  "화장 관련": {
+    "Applying_makeup": "화장하는 중",
+    "Eyeshadow": "아이섀도",
+    "Eyeliner": "아이라이너",
+    "Mascara": "마스카라",
+    "Lipstick": "립스틱"
+  },
+  "입/혀 관련": {
+    "Open_mouth": "입 벌리기",
+    "Closed_mouth": "입 다물기",
+    "Licking_lips": "입술 핥기",
+    "Lip_biting": "입술 깨물기",
+    "Breathing": "숨쉬기 (입김 등 묘사)",
+    "Drooling": "침 흘리기",
+    "Crying": "울기"
+  },
+  "이빨 관련": {
+    "Biting": "(무언가를) 물기",
+    "Finger_biting": "손가락 깨물기",
+    "Ear_biting": "귀 깨물기",
+    "Neck_biting": "목 깨물기"
+  },
+  "혀 관련": {
+    "Tongue_out": "혀 내밀기",
+    "Licking_face": "얼굴 핥기"
+  },
+  "머리 관련": {
+    "Brushing_hair": "머리 빗기",
+    "Hair_twirling": "머리카락 꼬기"
+  },
+  "귀 관련": {
+    "Covering_ears": "귀 막기",
+    "Ear_grab": "귀 잡기"
+  },
+  "코 관련": {
+    "Smelling": "냄새 맡기"
+  },
+  "손/손가락 관련": {
+    "Waving": "손 흔들기",
+    "Clenched_hand": "주먹 쥐기",
+    "Covering_face": "얼굴 가리기",
+    "Pointing": "손가락으로 가리키기",
+    "Thumbs_up": "엄지 들어 올리기",
+    "Finger_heart": "손가락 하트",
+    "V_sign": "브이(V) 표시하기",
+    "High_five": "하이파이브",
+    "Fist_bump": "주먹 인사"
+  },
+  "발/다리/무릎 관련": {
+    "Tiptoes": "까치발 서기",
+    "Leg_lift": "다리 들기",
+    "Crossed_legs": "다리 꼬기",
+    "Kneeling": "무릎 꿇기",
+    "One_knee": "한쪽 무릎 꿇기"
+  },
+  "꼬리/날개 관련": {
+    "Tail_wagging": "꼬리 흔들기",
+    "Tail_grab": "꼬리 잡기",
+    "Wing_hug": "날개로 감싸 안기",
+    "Wing_grab": "날개 잡기"
+  }
+}

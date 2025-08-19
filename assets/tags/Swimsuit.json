@@ -1,0 +1,30 @@
+{
+    "종류": {
+        "bikini": "비키니",
+        "slingshot_swimsuit": "슬링샷 수영복",
+        "rash_guard": "래시가드",
+        "bikini_skirt": "비키니 스커트",
+        "sports_bikini": "스포츠 비키니",
+        "old_fashioned_swimsuit": "구식 수영복",
+        "school_swimsuit": "학교 수영복",
+        "competition_swimsuit": "경기용 수영복",
+        "one_piece_swimsuit": "원피스 수영복",
+        "dress_swimsuit": "드레스 수영복",
+        "casual_one_piece_swimsuit": "캐주얼 원피스 수영복"
+    },
+    "재질": {
+        "leaf_bikini": "잎사귀 비키니",
+        "checkered_bikini": "체크무늬 비키니"
+    },
+    "상태": {
+        "lowleg_bikini": "로우레그 비키니",
+        "micro_bikini": "마이크로 비키니",
+        "o_ring_bikini": "O링 비키니",
+        "o_ring_top": "O링 상의",
+        "o_ring_bottom": "O링 하의",
+        "side_tie_bikini_bottom": "옆 끈 비키니 하의",
+        "string_bikini": "끈 비키니",
+        "tankini": "탱키니",
+        "thong_bikini": "끈 팬티 비키니"
+    }
+}

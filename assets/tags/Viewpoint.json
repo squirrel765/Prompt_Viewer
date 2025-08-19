@@ -1,0 +1,42 @@
+{
+    "시점/구도": {
+        "back_view": "뒷모습",
+        "front_view": "앞모습",
+        "side_view": "옆모습",
+        "looking_at_viewer": "정면 응시",
+        "looking_away": "외면하기",
+        "looking_back": "뒤돌아보기",
+        "eye_contact": "눈 맞춤",
+        "from_above": "위에서 본 시점",
+        "from_below": "아래에서 본 시점",
+        "over_shoulder_view": "어깨 너머 시점",
+        "first_person_view": "1인칭 시점",
+        "POV_shot": "POV 샷 (1인칭 시점)"
+    },
+    "추가": {
+        "facing_viewer": "보는 사람을 향하기",
+        "looking_down": "아래를 보기",
+        "looking_up": "위를 보기",
+        "looking_to_the_side": "옆을 보기",
+        "looking_back_over_shoulder": "어깨 너머로 뒤돌아보기",
+        "torso_twist": "상체 비틀기",
+        "camera_angle_tilted": "기울어진 카메라 각도",
+        "dynamic_angle": "역동적인 각도",
+        "dutch_angle": "더치 앵글",
+        "extreme_closeup": "익스트림 클로즈업",
+        "closeup": "클로즈업",
+        "medium_shot": "미디엄 샷",
+        "full_body_shot": "전신 샷",
+        "overhead_view": "오버헤드 뷰",
+        "worm_eye_view": "웜즈 아이 뷰",
+        "third_person_view": "3인칭 시점",
+        "silhouette_view": "실루엣 뷰",
+        "oblique_view": "사선 뷰",
+        "rear_view_mirror": "백미러 시점",
+        "reflected_view": "반사된 시점",
+        "profile_view": "프로필 뷰 (옆모습)",
+        "3/4_view": "3/4 뷰",
+        "top_down_view": "탑다운 뷰 (위에서 아래로)",
+        "bottom_up_view": "바텀업 뷰 (아래에서 위로)"
+    }
+}

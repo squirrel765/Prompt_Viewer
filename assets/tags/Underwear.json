@@ -1,0 +1,116 @@
+{
+    "브래지어/종류": {
+        "bra_strap": "브래지어 끈",
+        "adhesive_bra": "접착식 브라",
+        "beltbra": "벨트 브라",
+        "frilled_bra": "프릴 브라",
+        "bow_bra": "리본 브라",
+        "sports_bra": "스포츠 브라",
+        "training_bra": "트레이닝 브라"
+    },
+    "브래지어/상태": {
+        "cupless_bra": "컵 없는 브라",
+        "shelf_bra": "쉘프 브라",
+        "strapless_bra": "끈 없는 브라",
+        "front_tie_bra": "앞 끈 브라",
+        "front_hook_bra": "앞 후크 브라"
+    },
+    "브래지어/무늬": {
+        "plaid_bra": "체크무늬 브라",
+        "strawberry_bra": "딸기 무늬 브라",
+        "lace_trimmed_bra": "레이스 장식 브라",
+        "polka_dot_bra": "물방울 무늬 브라",
+        "print_bra": "프린트 브라",
+        "striped_bra": "줄무늬 브라",
+        "vertical_striped_bra": "세로 줄무늬 브라",
+        "lace_bra": "레이스 브라",
+        "checkered_bra": "체커보드 무늬 브라"
+    },
+    "브래지어/위치": {
+        "bra_on_ass": "엉덩이에 브라",
+        "bra_on_head": "머리에 브라"
+    },
+    "브래지어/행동": {
+        "bra": "브라",
+        "no_bra": "노브라",
+        "bra_lift": "브라 들어올리기",
+        "bra_pull": "브라 당기기",
+        "holding_bra": "브라 들고 있기",
+        "bra_removed": "브라 벗음",
+        "adjusting_bra": "브라 고쳐 입기",
+        "torn_bra": "찢어진 브라",
+        "open_bra": "열린 브라"
+    },
+    "팬티/종류": {
+        "thong": "끈 팬티",
+        "c_string": "C스트링",
+        "g_string": "G스트링",
+        "bow_panties": "리본 팬티",
+        "side_tie_panties": "옆 끈 팬티",
+        "string_panties": "끈 팬티"
+    },
+    "팬티/재질": {
+        "latex_panties": "라텍스 팬티",
+        "leaf_panties": "잎사귀 팬티"
+    },
+    "팬티/무늬": {
+        "plaid_panties": "체크무늬 팬티",
+        "cat_panties": "고양이 무늬 팬티",
+        "bear_panties": "곰 무늬 팬티",
+        "strawberry_panties": "딸기 무늬 팬티",
+        "lace_panties": "레이스 팬티",
+        "lace_trimmed_panties": "레이스 장식 팬티",
+        "polka_dot_panties": "물방울 무늬 팬티",
+        "print_panties": "프린트 팬티",
+        "striped_panties": "줄무늬 팬티",
+        "vertical_striped_panties": "세로 줄무늬 팬티",
+        "checkered_panties": "체커보드 무늬 팬티",
+        "bunny_panties": "토끼 무늬 팬티"
+    },
+    "팬티/상태": {
+        "frilled_panties": "프릴 팬티",
+        "loose_panties": "헐렁한 팬티",
+        "micro_panties": "마이크로 팬티",
+        "lowleg_panties": "로우레그 팬티",
+        "highleg_panties": "하이레그 팬티",
+        "Sizes_of_panties": "팬티 사이즈",
+        "crotchless_panties": "가랑이 트임 팬티",
+        "crotch_seam": "가랑이 솔기",
+        "strapless_bottom": "끈 없는 하의",
+        "backless_panties": "백리스 팬티"
+    },
+    "팬티/위치": {
+        "panties_on_breasts": "가슴에 팬티",
+        "panties_on_head": "머리에 팬티",
+        "panty_pull": "팬티 당기기",
+        "panties_in_mouth": "입에 팬티",
+        "panties_around_ankles": "발목에 걸친 팬티",
+        "panties_around_one_leg": "한쪽 다리에 걸친 팬티",
+        "panties_on_penis": "성기에 팬티",
+        "penis_in_panties": "팬티 속 성기"
+    },
+    "팬티/행동": {
+        "adjusting_panties": "팬티 고쳐 입기",
+        "hand_in_panties": "팬티 속에 손",
+        "holding_panties": "팬티 들고 있기",
+        "panties": "팬티",
+        "clitoris_slip": "클리토리스 노출",
+        "panty_pull": "팬티 당기기",
+        "panty_lift": "팬티 들어올리기",
+        "pussy_peek": "성기 엿보기",
+        "panties_aside": "팬티 젖히기",
+        "pantyhose_pull": "팬티스타킹 당기기"
+    },
+    "양말/행동": {
+        "no_legwear": "레그웨어 없음",
+        "wet_legwear": "젖은 레그웨어",
+        "torn_legwear": "찢어진 레그웨어",
+        "taut_legwear": "팽팽한 레그웨어",
+        "mismatched_legwear": "짝짝이 레그웨어",
+        "holding_legwear": "레그웨어 들고 있기",
+        "pulling_off_legwear": "레그웨어 벗기",
+        "putting_on_legwear": "레그웨어 신기",
+        "removing_legwear": "레그웨어 제거하기",
+        "adjusting_legwear": "레그웨어 고쳐 신기"
+    }
+}
