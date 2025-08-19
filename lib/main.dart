@@ -4,8 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prompt_viewer/providers/theme_provider.dart';
 import 'package:prompt_viewer/screens/main_screen.dart';
+import 'package:prompt_viewer/services/notification_service.dart';
 
-void main() {
+final notificationService = NotificationService();
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await notificationService.init();
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -86,8 +92,7 @@ class MyApp extends ConsumerWidget {
         ),
         chipTheme: ChipThemeData(
           backgroundColor: Colors.grey.shade800,
-          // [수정] withOpacity 경고 해결
-          labelStyle: TextStyle(color: Colors.white.withAlpha(230)), // withOpacity(0.9) -> withAlpha(230)
+          labelStyle: TextStyle(color: Colors.white.withAlpha(230)),
           side: BorderSide.none,
         ),
         // [수정] CardTheme -> CardThemeData 로 변경

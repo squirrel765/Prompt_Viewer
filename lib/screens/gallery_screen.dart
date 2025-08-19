@@ -1,9 +1,7 @@
 // lib/screens/gallery_screen.dart
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -14,22 +12,9 @@ import 'package:prompt_viewer/screens/detail_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
-import 'package:image/image.dart' as img;
 
-// [신규] 실시간 썸네일 생성을 compute를 통해 백그라운드에서 처리하기 위한 최상위 함수
-Future<Uint8List?> _generateThumbnailIsolate(String path) async {
-  try {
-    // 원본 파일을 읽어 썸네일 생성 후 JPG 바이트 데이터로 반환
-    final fileBytes = await File(path).readAsBytes();
-    final image = img.decodeImage(fileBytes);
-    if (image == null) return null;
-    final thumbnail = img.copyResizeCropSquare(image, size: 256);
-    return Uint8List.fromList(img.encodeJpg(thumbnail, quality: 80));
-  } catch (e) {
-    debugPrint("On-the-fly thumbnail generation failed for $path: $e");
-    return null;
-  }
-}
+// [수정] UI 렌더링 루프에서 실시간 썸네일 생성 로직을 제거했으므로,
+// _generateThumbnailIsolate 함수는 이제 이 파일에서 필요하지 않습니다.
 
 class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
@@ -64,7 +49,17 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     super.dispose();
   }
 
+  /// 폴더 선택 및 권한 요청을 처리하는 함수
   Future<void> _pickFolder() async {
+    // 1. 알림 권한을 먼저 요청합니다 (Android 13 이상).
+    final notificationStatus = await Permission.notification.request();
+    if (mounted && !notificationStatus.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('알림 권한이 없어 진행 상태를 표시할 수 없습니다.')),
+      );
+    }
+
+    // 2. 저장소 접근 권한을 요청합니다.
     if (await Permission.storage.request().isGranted || await Permission.manageExternalStorage.request().isGranted) {
       final folderPath = await FilePicker.platform.getDirectoryPath();
       if (folderPath != null && mounted) {
@@ -80,16 +75,14 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     final galleryState = ref.watch(galleryProvider);
     final showNsfw = ref.watch(configProvider).showNsfw;
 
-    // DB에서 첫 페이지를 불러오는 동안 로딩 인디케이터 표시
     if (galleryState.isLoading && galleryState.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // NSFW 필터링 (FullImageItem에만 적용 가능)
     final itemsToDisplay = galleryState.items.where((item) {
       if (showNsfw) return true;
       if (item is FullImageItem) return !item.metadata.isNsfw;
-      return true; // 임시 아이템은 필터링하지 않고 일단 보여줌
+      return true;
     }).toList();
 
     return itemsToDisplay.isEmpty && galleryState.items.isNotEmpty
@@ -132,7 +125,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
               final item = filteredItems[index];
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
-                child: _buildGalleryItem(context, item, filteredItems),
+                child: _buildGalleryItem(context, item, galleryItems),
               );
             },
           ),
@@ -141,30 +134,35 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     );
   }
 
+  /// [핵심 최종 수정] UI 렌더링 성능이 최적화된 아이템 빌더
   Widget _buildGalleryItem(BuildContext context, GalleryItem item, List<GalleryItem> allItems) {
     // 1. 파싱 완료된 아이템: 저장된 썸네일 파일을 즉시 보여줌 (빠름)
     if (item is FullImageItem) {
       return InkWell(
         onTap: () => _navigateToFullScreen(context, item.path, allItems),
         onLongPress: () => _showContextMenu(context, ref, item.metadata),
-        child: Hero(tag: item.path, child: Image.file(File(item.metadata.thumbnailPath), fit: BoxFit.cover)),
+        child: Hero(
+          tag: item.path,
+          child: Image.file(
+            File(item.metadata.thumbnailPath),
+            fit: BoxFit.cover,
+            errorBuilder: (c, e, s) => Container(color: Colors.grey.shade300),
+          ),
+        ),
       );
     }
-    // 2. 파싱 전 임시 아이템: 실시간으로 썸네일을 생성해서 보여줌
+    // 2. 파싱 전 임시 아이템: 단순한 로딩 플레이스홀더를 보여줌 (매우 가벼움)
+    // GalleryProvider가 이 아이템을 FullImageItem으로 교체하면 자동으로 썸네일이 나타남.
     else if (item is TemporaryImageItem) {
-      return FutureBuilder<Uint8List?>(
-        future: compute(_generateThumbnailIsolate, item.path),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
-            return InkWell(
-              onTap: () => _navigateToFullScreen(context, item.path, allItems),
-              // 임시 아이템은 메타데이터가 없으므로 롱클릭 메뉴 비활성화
-              child: Hero(tag: item.path, child: Image.memory(snapshot.data!, fit: BoxFit.cover)),
-            );
-          }
-          // 썸네일 생성 중에는 회색 배경 표시
-          return Container(color: Theme.of(context).colorScheme.surfaceContainer);
-        },
+      return Container(
+        color: Theme.of(context).colorScheme.surfaceContainer,
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.0),
+          ),
+        ),
       );
     }
     return const SizedBox.shrink();
@@ -173,7 +171,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   void _navigateToFullScreen(BuildContext context, String currentPath, List<GalleryItem> allItems) {
     final allPaths = allItems.map((e) => e.path).toList();
     final initialIndex = allPaths.indexOf(currentPath);
-    if (initialIndex == -1) return; // 안전장치
+    if (initialIndex == -1) return;
 
     Navigator.push(context, MaterialPageRoute(
       builder: (context) => FullScreenViewer(

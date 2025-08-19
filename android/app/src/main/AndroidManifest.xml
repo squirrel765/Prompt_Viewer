@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- 다른 앱과 상호작용하기 위한 쿼리 목록 -->
     <queries>
@@ -22,6 +23,7 @@
     </queries>
 
     <application
+        android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
         android:label="프롬프트뷰어"
         android:icon="@mipmap/ic_launcher">

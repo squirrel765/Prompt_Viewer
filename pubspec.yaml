@@ -17,6 +17,8 @@ dependencies:
   #데이터베이스
   shared_preferences: ^2.2.3
   permission_handler: ^11.3.1
+  flutter_local_notifications: ^17.1.2
+
 
   sqflite: ^2.3.3          # SQLite 데이터베이스 사용
   path_provider: ^2.1.3    # 앱의 파일 시스템 경로 접근
