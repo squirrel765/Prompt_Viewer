@@ -2,19 +2,23 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data'; // Uint8List를 사용하기 위해 추가
 import 'package:image/image.dart' as img;
 
 class MetadataParserService {
 
-  /// 이미지 파일에서 A1111, ComfyUI, NAI의 원본 메타데이터를 모두 추출합니다.
-  Future<Map<String, String?>> extractRawMetadata(String filePath) async {
+  /// [핵심 수정] 이미지 파일 경로 또는 바이트 데이터를 받아 원본 메타데이터를 추출합니다.
+  /// 이렇게 하면 파일을 한 번만 읽고 파싱과 썸네일 생성에 모두 사용할 수 있습니다.
+  Future<Map<String, String?>> extractRawMetadata(String filePath, {Uint8List? bytes}) async {
     final result = <String, String?>{
       'a1111_parameters': null,
       'comfyui_workflow': null,
       'nai_comment': null,
     };
-    final bytes = await File(filePath).readAsBytes();
-    final image = img.decodeImage(bytes);
+
+    // bytes가 주어지지 않았다면, 기존 방식대로 파일 경로에서 직접 읽어옵니다.
+    final imageBytes = bytes ?? await File(filePath).readAsBytes();
+    final image = img.decodeImage(imageBytes);
     if (image == null) return result;
 
     // 1. ComfyUI 워크플로우 추출 ('prompt' 또는 'workflow' 키 확인)
@@ -34,6 +38,7 @@ class MetadataParserService {
     // 3. NAI Comment 추출 ('Comment' 키 확인, NovelAI 이미지의 가장 큰 특징)
     result['nai_comment'] = image.textData?['Comment'];
 
+    // 4. A1111 파라미터가 없고 NAI Comment가 있을 때, Comment 내부 파싱 시도 (호환성)
     if (result['a1111_parameters'] == null && result['nai_comment'] != null) {
       try {
         final Map<String, dynamic> naiJson = jsonDecode(result['nai_comment']!);
@@ -122,6 +127,7 @@ class MetadataParserService {
     }
   }
 
+  /// 이미지 파일에서 ComfyUI 워크플로우 JSON만 추출하는 헬퍼 메서드
   Future<String?> extractWorkflowJson(String filePath) async {
     final rawData = await extractRawMetadata(filePath);
     return rawData['comfyui_workflow'];

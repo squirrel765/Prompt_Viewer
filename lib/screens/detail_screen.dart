@@ -89,14 +89,10 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        // --- START: 에러 해결 부분 ---
-                        // [수정] FullScreenViewer의 생성자 변경에 따라 호출 방식 수정
-                        // 단일 이미지 경로를 리스트로 감싸고, 시작 인덱스를 0으로 전달합니다.
                         builder: (context) => FullScreenViewer(
                           imagePaths: [widget.metadata.path],
                           initialIndex: 0,
                         ),
-                        // --- END: 에러 해결 부분 ---
                       ),
                     );
                   },
@@ -112,7 +108,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     );
   }
 
-  /// 메타데이터 종류를 선택하는 탭 위젯
   Widget _buildMetadataTabs() {
     return Container(
       decoration: BoxDecoration(
@@ -128,7 +123,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     );
   }
 
-  /// 개별 탭 아이템 위젯
   Widget _buildTabItem(String title, DisplayMode mode) {
     final isSelected = _mode == mode;
     final theme = Theme.of(context);
@@ -152,7 +146,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
         child: Text(
           title,
           style: TextStyle(
-            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withOpacity(0.7),
+            // [경고 수정] withOpacity -> withAlpha
+            color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withAlpha(179),
             fontWeight: FontWeight.bold,
             fontSize: 14,
           ),
@@ -161,7 +156,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     );
   }
 
-  /// 현재 선택된 탭에 따라 다른 프롬프트 뷰를 보여주는 위젯
   Widget _buildPromptView() {
     switch (_mode) {
       case DisplayMode.stableDiffusion:
@@ -173,11 +167,11 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     }
   }
 
-  /// Stable Diffusion (A1111) 파라미터 뷰 위젯
   Widget _buildStableDiffusionView() {
     if (widget.metadata.a1111Parameters == null || widget.metadata.a1111Parameters!.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('Stable Diffusion 데이터가 없습니다.')));
     }
+    // [오류 수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final parsedData = ref.read(metadataParserProvider).parseA1111Parameters(widget.metadata.a1111Parameters!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,8 +183,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     );
   }
 
-  /// ComfyUI 워크플로우 뷰 위젯
   Widget _buildComfyUIView() {
+    // [오류 수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final formattedJson = ref.read(metadataParserProvider).formatJson(widget.metadata.comfyUIWorkflow);
     if(formattedJson.contains("데이터가 없습니다")){
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('ComfyUI 데이터가 없습니다.')));
@@ -198,11 +192,11 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     return _buildPromptSection('ComfyUI Workflow', formattedJson);
   }
 
-  /// NovelAI 파라미터 뷰 위젯
   Widget _buildNovelAIView() {
     if (widget.metadata.naiComment == null || widget.metadata.naiComment!.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('NovelAI 데이터가 없습니다.')));
     }
+    // [오류 수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final parsedData = ref.read(metadataParserProvider).parseNaiParameters(widget.metadata.naiComment!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,7 +208,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     );
   }
 
-  /// 프롬프트 내용을 표시하는 공통 섹션 위젯
   Widget _buildPromptSection(String title, String? content) {
     if (content == null || content.isEmpty) {
       return const SizedBox.shrink();
@@ -248,7 +241,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+              // [경고 수정] surfaceVariant -> surfaceContainerHighest
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12.0),
               border: Border.all(color: Theme.of(context).dividerColor),
             ),

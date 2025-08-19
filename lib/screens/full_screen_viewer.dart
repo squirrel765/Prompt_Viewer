@@ -5,14 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 
 class FullScreenViewer extends StatefulWidget {
-  // [수정] 단일 경로 대신 이미지 경로 리스트와 시작 인덱스를 받습니다.
   final List<String> imagePaths;
   final int initialIndex;
+  // --- START: 수정된 부분 ---
+  // [추가] 페이지가 변경될 때마다 호출될 콜백 함수를 받습니다.
+  final ValueChanged<int>? onPageChanged;
+  // --- END: 수정된 부분 ---
 
   const FullScreenViewer({
     super.key,
     required this.imagePaths,
     this.initialIndex = 0,
+    // --- START: 수정된 부분 ---
+    this.onPageChanged, // [추가] 생성자에 콜백 함수 추가
+    // --- END: 수정된 부분 ---
   });
 
   @override
@@ -20,13 +26,11 @@ class FullScreenViewer extends StatefulWidget {
 }
 
 class _FullScreenViewerState extends State<FullScreenViewer> {
-  // PageView를 제어하기 위한 컨트롤러
   late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    // 전달받은 initialIndex로 PageController를 초기화합니다.
     _pageController = PageController(initialPage: widget.initialIndex);
   }
 
@@ -40,29 +44,36 @@ class _FullScreenViewerState extends State<FullScreenViewer> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        // 화면의 아무 곳이나 탭하면 뒤로 돌아가는 기능은 유지합니다.
-        onTap: () {
-          Navigator.pop(context);
-        },
-        // [수정] 단일 PhotoView 대신 PageView.builder를 사용합니다.
-        child: PageView.builder(
-          controller: _pageController,
-          itemCount: widget.imagePaths.length,
-          itemBuilder: (context, index) {
-            final imagePath = widget.imagePaths[index];
-            return PhotoView(
-              imageProvider: FileImage(File(imagePath)),
-              // 화면에 꽉 차게 시작
-              initialScale: PhotoViewComputedScale.contained,
-              // 최소/최대 배율 설정
-              minScale: PhotoViewComputedScale.contained,
-              maxScale: PhotoViewComputedScale.covered * 4.0,
-              // Hero 애니메이션을 위한 태그 (각 이미지마다 고유한 경로를 태그로 사용)
-              heroAttributes: PhotoViewHeroAttributes(tag: imagePath),
-            );
-          },
-        ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.imagePaths.length,
+            // --- START: 수정된 부분 ---
+            // [추가] PageView의 페이지가 바뀔 때마다 우리가 전달받은 onPageChanged 함수를 호출합니다.
+            onPageChanged: widget.onPageChanged,
+            // --- END: 수정된 부분 ---
+            itemBuilder: (context, index) {
+              final imagePath = widget.imagePaths[index];
+              return PhotoView(
+                imageProvider: FileImage(File(imagePath)),
+                initialScale: PhotoViewComputedScale.contained,
+                minScale: PhotoViewComputedScale.contained,
+                maxScale: PhotoViewComputedScale.covered * 4.0,
+                heroAttributes: PhotoViewHeroAttributes(tag: imagePath),
+              );
+            },
+          ),
+          // 뒤로가기 버튼 추가 (화면 아무데나 누르는 것보다 명시적)
+          Positioned(
+            top: 40,
+            left: 16,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+        ],
       ),
     );
   }

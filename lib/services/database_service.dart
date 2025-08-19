@@ -8,17 +8,14 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseService {
   static const _databaseName = "gallery.db";
-  // *** 데이터베이스 버전을 6으로 올립니다. ***
-  static const _databaseVersion = 6;
+  static const _databaseVersion = 7; // 썸네일 경로 추가로 버전 7
 
   static const imagesTable = 'images';
   static const presetsTable = 'prompt_presets';
 
-  // 싱글톤 패턴을 사용하여 앱 전체에서 단 하나의 DB 서비스 인스턴스만 사용하도록 합니다.
   DatabaseService._privateConstructor();
   static final DatabaseService instance = DatabaseService._privateConstructor();
 
-  // 데이터베이스 연결을 한 번만 생성하고 재사용하기 위한 변수입니다.
   static Database? _database;
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -26,7 +23,6 @@ class DatabaseService {
     return _database!;
   }
 
-  // 데이터베이스 파일을 열거나 생성합니다.
   _initDatabase() async {
     String path = join(await getDatabasesPath(), _databaseName);
     return await openDatabase(
@@ -37,13 +33,11 @@ class DatabaseService {
     );
   }
 
-  // 앱이 처음 설치되어 DB가 없을 때 테이블을 생성합니다.
   Future _onCreate(Database db, int version) async {
     await _createImagesTable(db);
     await _createPresetsTable(db);
   }
 
-  // 앱 업데이트 등으로 DB 버전이 올라갔을 때 기존 구조를 변경(마이그레이션)합니다.
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 3) {
       await _createPresetsTable(db);
@@ -55,18 +49,20 @@ class DatabaseService {
       await db.execute('ALTER TABLE $imagesTable ADD COLUMN rating REAL NOT NULL DEFAULT 0.0');
       await db.execute('ALTER TABLE $imagesTable ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0');
     }
-    // *** 버전 6으로 업그레이드될 때 실행될 마이그레이션 코드 ***
     if (oldVersion < 6) {
       await db.execute('ALTER TABLE $imagesTable ADD COLUMN is_nsfw INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE $presetsTable ADD COLUMN is_nsfw INTEGER NOT NULL DEFAULT 0');
     }
+    if (oldVersion < 7) {
+      await db.execute('ALTER TABLE $imagesTable ADD COLUMN thumbnailPath TEXT NOT NULL DEFAULT ""');
+    }
   }
 
-  // 'images' 테이블 생성 SQL (새로운 컬럼 포함)
   Future<void> _createImagesTable(Database db) async {
     await db.execute('''
       CREATE TABLE $imagesTable (
         path TEXT PRIMARY KEY,
+        thumbnailPath TEXT NOT NULL,
         a1111_parameters TEXT,
         comfyui_workflow TEXT,
         nai_comment TEXT,
@@ -79,7 +75,6 @@ class DatabaseService {
     ''');
   }
 
-  // 'prompt_presets' 테이블 생성 SQL (새로운 컬럼 포함)
   Future<void> _createPresetsTable(Database db) async {
     await db.execute('''
       CREATE TABLE $presetsTable (
@@ -95,6 +90,20 @@ class DatabaseService {
   }
 
   // --- 이미지 관련 CRUD 함수들 ---
+
+  /// [신규] 점진적 로딩(페이지네이션)을 위한 이미지 조회 메서드
+  /// limit: 한 번에 가져올 개수
+  /// offset: 건너뛸 개수 (페이지 번호)
+  Future<List<ImageMetadata>> getImagesPaginated(int limit, int offset) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      imagesTable,
+      orderBy: 'timestamp DESC', // 최신순으로 정렬
+      limit: limit,
+      offset: offset,
+    );
+    return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
+  }
 
   Future<void> insertOrUpdateImage(ImageMetadata metadata) async {
     final db = await database;
@@ -136,7 +145,6 @@ class DatabaseService {
     );
   }
 
-  /// *** 새로 추가된 NSFW 상태 업데이트 메서드 ***
   Future<void> updateImageNsfwStatus(String path, bool isNsfw) async {
     final db = await database;
     await db.update(
@@ -147,7 +155,6 @@ class DatabaseService {
     );
   }
 
-  /// *** 새로 추가된 별점 업데이트 메서드 ***
   Future<void> updateImageRating(String path, double rating) async {
     final db = await database;
     await db.update(
@@ -158,10 +165,8 @@ class DatabaseService {
     );
   }
 
-  /// *** 새로 추가된 조회수 증가 메서드 ***
   Future<void> incrementImageViewCount(String path) async {
     final db = await database;
-    // 기존 값에 1을 더하는 SQL 쿼리를 직접 실행하여 효율성을 높입니다.
     await db.rawUpdate('UPDATE $imagesTable SET view_count = view_count + 1 WHERE path = ?', [path]);
   }
 
