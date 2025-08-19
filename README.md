@@ -68,6 +68,12 @@
 3.  다운로드한 APK 파일을 안드로이드 기기에서 실행하여 설치합니다.
     - _(설치 과정에서 '출처를 알 수 없는 앱 설치' 권한을 허용해야 할 수 있습니다.)_
 
+---
+## Comfyui에서 SD형식으로 프롬프트 저장하기
+<img width="326" height="839" alt="Image" src="https://github.com/user-attachments/assets/98e1e2bc-239e-40d9-a683-db0361e6a50a" /><br> 
+
+#### 위 노드를 사용해서 저장해주세요.
+
 ## 🛠️ 기술 스택
 
 -   **Framework**: Flutter 3.x
