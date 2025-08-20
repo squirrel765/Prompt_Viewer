@@ -15,7 +15,7 @@
 
 | 갤러리 & 검색 | 프롬프트 상세 보기 | 프리셋으로 관리 | Civitai 연동 |
 | :---: | :---: | :---: | :---: |
-| ![홈 화면](https://github.com/user-attachments/assets/45c3bc7d-a459-4483-948f-180b600dee5a) | ![Image](https://github.com/user-attachments/assets/1d37c905-5168-4e94-818a-1f14a0311e56) | ![프리셋 생성](https://github.com/user-attachments/assets/051667f8-5674-4204-b97c-24f64c01c901) | ![Civitai 연동](https://github.com/user-attachments/assets/54f2bcd4-4055-4b9b-ab09-c6e825d36f03) |
+| ![홈 화면](example_images/home.jpg)| ![Image](https://github.com/user-attachments/assets/1d37c905-5168-4e94-818a-1f14a0311e56) | ![프리셋 생성](https://github.com/user-attachments/assets/051667f8-5674-4204-b97c-24f64c01c901) | ![Civitai 연동](https://github.com/user-attachments/assets/54f2bcd4-4055-4b9b-ab09-c6e825d36f03) |
 | **폴더별**로 이미지를 보고 **프롬프트 내용**으로 검색할 수 있습니다. | 이미지를 길게 눌러 **즐겨찾기, 별점, NSFW 지정** 등을 할 수 있습니다. | 마음에 드는 프롬프트와 이미지를 **하나의 프리셋**으로 저장하세요. | **Civitai URL**만으로 이미지와 프롬프트를 바로 가져올 수 있습니다. |
 
 <br>
