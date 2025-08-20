@@ -4,7 +4,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
 import 'package:prompt_viewer/services/worker_isolate.dart';
-import 'dart:collection'; // Queue를 사용하기 위해 import
+import 'dart:collection';
 
 // --- 데이터 모델 (변경 없음) ---
 class SyncRequest {
@@ -62,7 +62,7 @@ Future<void> manageSyncProcess(SyncRequest request) async {
     final allPaths = allFiles.map((f) => f.path).toList();
     mainSendPort.send(FileFoundMessage(allPaths));
 
-    // 2. 변경된 파일만 필터링 (증분 동기화)
+    // 2. 변경된 파일만 필터링
     final filesToProcess = <File>[];
     for (final file in allFiles) {
       final stat = await file.stat();
@@ -80,11 +80,11 @@ Future<void> manageSyncProcess(SyncRequest request) async {
 
     // 3. 워커 풀 생성 및 작업 분배
     final numberOfWorkers = max(1, Platform.numberOfProcessors - 1);
-    final fileQueue = Queue<File>.from(filesToProcess); // 처리할 파일 큐
+    final fileQueue = Queue<File>.from(filesToProcess);
     int resultsReceived = 0;
     final totalTasks = filesToProcess.length;
 
-    // 초기 작업자들을 실행
+    // 초기 작업자들 실행
     for (int i = 0; i < numberOfWorkers; i++) {
       if (fileQueue.isNotEmpty) {
         final file = fileQueue.removeFirst();
@@ -102,11 +102,9 @@ Future<void> manageSyncProcess(SyncRequest request) async {
     // 4. 워커들의 작업 결과 수신 및 다음 작업 할당
     receivePort.listen((message) {
       if (message is WorkerResult) {
-        // 결과를 메인 스레드로 즉시 전달
         mainSendPort.send(ParsingResultMessage(message));
         resultsReceived++;
 
-        // 처리할 파일이 더 남아있다면, 일을 마친 워커 대신 새로운 작업을 시작
         if (fileQueue.isNotEmpty) {
           final file = fileQueue.removeFirst();
           Isolate.spawn(
@@ -119,10 +117,9 @@ Future<void> manageSyncProcess(SyncRequest request) async {
           );
         }
 
-        // 모든 파일 처리가 완료되었는지 확인
         if (resultsReceived == totalTasks) {
           mainSendPort.send(SyncCompleteMessage(allPaths.length));
-          receivePort.close(); // 모든 작업이 끝났으므로 포트를 닫음
+          receivePort.close();
         }
       }
     });

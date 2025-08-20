@@ -4,17 +4,53 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prompt_viewer/providers/gallery_provider.dart';
-import 'package:prompt_viewer/models/image_metadata.dart'; // ImageMetadata를 사용하기 위해 추가
+import 'package:prompt_viewer/models/image_metadata.dart';
 
-class ImageSelectionScreen extends ConsumerStatefulWidget {
+/// [최종] galleryProvider의 비동기 상태를 처리하는 메인 위젯
+class ImageSelectionScreen extends ConsumerWidget {
   final Set<String> initialSelection;
   const ImageSelectionScreen({super.key, required this.initialSelection});
 
   @override
-  ConsumerState<ImageSelectionScreen> createState() => _ImageSelectionScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    // galleryProvider의 AsyncValue 상태를 watch
+    final galleryAsyncValue = ref.watch(galleryProvider);
+
+    // AsyncValue의 상태에 따라 다른 UI를 보여줌 (when 사용)
+    return Scaffold(
+      body: galleryAsyncValue.when(
+        // 데이터 로딩 중
+        loading: () => const Center(child: CircularProgressIndicator()),
+        // 에러 발생
+        error: (err, stack) => Center(child: Text('이미지를 불러올 수 없습니다: $err')),
+        // 데이터 로딩 성공
+        data: (galleryState) {
+          // 실제 UI는 별도의 위젯으로 분리하여 상태(state)를 전달
+          return _ImageSelectionContent(
+            galleryState: galleryState,
+            initialSelection: initialSelection,
+          );
+        },
+      ),
+    );
+  }
 }
 
-class _ImageSelectionScreenState extends ConsumerState<ImageSelectionScreen> {
+/// 실제 이미지 선택 UI를 표시하는 위젯
+class _ImageSelectionContent extends ConsumerStatefulWidget {
+  final GalleryState galleryState;
+  final Set<String> initialSelection;
+
+  const _ImageSelectionContent({
+    required this.galleryState,
+    required this.initialSelection,
+  });
+
+  @override
+  ConsumerState<_ImageSelectionContent> createState() => _ImageSelectionContentState();
+}
+
+class _ImageSelectionContentState extends ConsumerState<_ImageSelectionContent> {
   late Set<String> _selectedPaths;
 
   @override
@@ -35,11 +71,12 @@ class _ImageSelectionScreenState extends ConsumerState<ImageSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- START: 수정된 부분 ---
-    final galleryState = ref.watch(galleryProvider);
+    // 이제 galleryState는 상위 위젯에서 안전하게 받아옵니다.
     // 이 화면은 파싱이 완료된 이미지만을 선택 대상으로 하므로, FullImageItem만 필터링합니다.
-    final List<ImageMetadata> allImages = galleryState.items.whereType<FullImageItem>().map((item) => item.metadata).toList();
-    // --- END: 수정된 부분 ---
+    final List<ImageMetadata> allImages = widget.galleryState.items
+        .whereType<FullImageItem>()
+        .map((item) => item.metadata)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -69,12 +106,13 @@ class _ImageSelectionScreenState extends ConsumerState<ImageSelectionScreen> {
             onTap: () => _toggleSelection(image.path),
             child: GridTile(
               footer: isSelected
-                  ? const GridTileBar(backgroundColor: Colors.black54, leading: Icon(Icons.check_circle, color: Colors.white))
+                  ? const GridTileBar(
+                  backgroundColor: Colors.black54,
+                  leading: Icon(Icons.check_circle, color: Colors.white))
                   : null,
               child: Image.file(
                 File(image.thumbnailPath), // 썸네일 사용
                 fit: BoxFit.cover,
-                // [경고 수정] withOpacity -> withAlpha
                 color: isSelected ? Colors.white.withAlpha(128) : null,
                 colorBlendMode: BlendMode.dstATop,
               ),

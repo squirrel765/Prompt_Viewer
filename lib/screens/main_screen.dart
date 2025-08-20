@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:prompt_viewer/providers/gallery_provider.dart'; // [추가]
+import 'package:prompt_viewer/providers/gallery_provider.dart';
 import 'package:prompt_viewer/screens/app_drawer.dart';
 import 'package:prompt_viewer/screens/gallery_screen.dart';
 import 'package:prompt_viewer/screens/explore_screen.dart';
@@ -11,7 +11,6 @@ import 'package:prompt_viewer/screens/save_screen.dart';
 import 'package:prompt_viewer/screens/my_page_screen.dart';
 import 'package:prompt_viewer/screens/settings_screen.dart';
 
-// [수정] ConsumerStatefulWidget으로 변경하여 ref를 사용할 수 있게 합니다.
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
@@ -27,6 +26,8 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    // [핵심 수정] AsyncNotifierProvider는 스스로 초기화를 관리하므로
+    // initState에서 수동으로 로드하는 로직은 이제 필요 없습니다. 모두 제거합니다.
   }
 
   @override
@@ -56,7 +57,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
   }
 
-  // [추가] 새로고침 로직
   Future<void> _refreshCurrentFolder() async {
     final currentFolder = ref.read(folderPathProvider);
     if (currentFolder != null && currentFolder.isNotEmpty) {
@@ -68,13 +68,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appBarTheme = theme.appBarTheme;
-    // [추가] galleryProvider의 상태를 감시합니다.
-    final galleryState = ref.watch(galleryProvider);
+    // [핵심 수정] galleryProvider는 이제 AsyncValue를 반환합니다.
+    final galleryAsyncValue = ref.watch(galleryProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -90,9 +89,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           style: appBarTheme.titleTextStyle,
         ),
         actions: [
-          // [핵심 수정] 홈 화면일 때 로딩 상태에 따라 다른 아이콘을 표시합니다.
           if (_selectedIndex == 0) ...[
-            if (galleryState.isLoading)
+            // [핵심 수정] AsyncValue에서 isSyncing 상태를 안전하게 가져와 로딩 아이콘을 표시합니다.
+            // valueOrNull은 데이터가 있을 때만 GalleryState를 반환하고, 아니면 null을 반환합니다.
+            if (galleryAsyncValue.valueOrNull?.isSyncing == true)
               const Padding(
                 padding: EdgeInsets.only(right: 16.0),
                 child: SizedBox(

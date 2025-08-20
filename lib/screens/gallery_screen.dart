@@ -2,6 +2,7 @@
 
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -13,38 +14,46 @@ import 'package:path/path.dart' as p;
 import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
 
-class GalleryScreen extends ConsumerStatefulWidget {
+/// [최종] galleryProvider의 비동기 상태를 처리하는 메인 위젯
+class GalleryScreen extends ConsumerWidget {
   const GalleryScreen({super.key});
 
   @override
-  ConsumerState<GalleryScreen> createState() => _GalleryScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    // AsyncNotifierProvider를 watch하면 AsyncValue 타입이 반환됩니다.
+    final galleryAsyncValue = ref.watch(galleryProvider);
+
+    // AsyncValue의 상태에 따라 다른 UI를 보여줍니다 (when 사용).
+    return galleryAsyncValue.when(
+      // 1. 데이터가 성공적으로 로드되었을 때
+      data: (galleryState) => _GalleryScreenContent(galleryState: galleryState),
+      // 2. 데이터가 로딩 중일 때 (앱 시작 시 최초 한 번)
+      loading: () => const Center(child: CircularProgressIndicator()),
+      // 3. 에러가 발생했을 때
+      error: (err, stack) => Center(child: Text('갤러리를 불러오는 중 오류 발생:\n$err')),
+    );
+  }
 }
 
-class _GalleryScreenState extends ConsumerState<GalleryScreen> {
+/// 실제 갤러리 UI를 표시하는 위젯
+class _GalleryScreenContent extends ConsumerStatefulWidget {
+  final GalleryState galleryState;
+  const _GalleryScreenContent({required this.galleryState});
+
+  @override
+  ConsumerState<_GalleryScreenContent> createState() => _GalleryScreenContentState();
+}
+
+class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
   String? _selectedFolder;
   final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-
-    // --- START: 핵심 수정 부분 ---
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-
-      final galleryState = ref.read(galleryProvider);
-      final folderPath = ref.read(folderPathProvider);
-
-      // [수정] 오직 폴더가 선택되어 있고, 갤러리 아이템이 비어 있으며, 로딩 중도 아닐 때만 initialLoad를 호출합니다.
-      // 이렇게 하면 다른 탭에 갔다가 돌아왔을 때 상태가 초기화되는 것을 방지할 수 있습니다.
-      if (folderPath != null && galleryState.items.isEmpty && !galleryState.isLoading) {
-        ref.read(galleryProvider.notifier).initialLoad();
-      }
-    });
-    // --- END: 핵심 수정 부분 ---
-
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300) {
+        // .notifier를 통해 GalleryNotifier의 메서드를 호출
         ref.read(galleryProvider.notifier).loadMoreImages();
       }
     });
@@ -56,9 +65,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     super.dispose();
   }
 
-  /// 폴더 선택 및 권한 요청을 처리하는 함수
   Future<void> _pickFolder() async {
-    // 1. 알림 권한을 먼저 요청합니다 (Android 13 이상).
     final notificationStatus = await Permission.notification.request();
     if (mounted && !notificationStatus.isGranted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -66,7 +73,6 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       );
     }
 
-    // 2. 저장소 접근 권한을 요청합니다.
     if (await Permission.storage.request().isGranted || await Permission.manageExternalStorage.request().isGranted) {
       final folderPath = await FilePicker.platform.getDirectoryPath();
       if (folderPath != null && mounted) {
@@ -79,36 +85,21 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final galleryState = ref.watch(galleryProvider);
+    final galleryState = widget.galleryState;
     final showNsfw = ref.watch(configProvider).showNsfw;
-    final hasInitialFolder = ref.watch(folderPathProvider) != null;
-
-    // 동기화 중(isLoading)이면서 아이템이 비어있을 때
-    if (galleryState.isLoading && galleryState.items.isEmpty) {
-      // 이전에 선택한 폴더가 있다면 로딩 인디케이터를 보여줌
-      return hasInitialFolder
-          ? const Center(child: CircularProgressIndicator())
-          : _buildInitialView(); // 선택한 폴더가 아예 없다면 초기 폴더 선택 화면
-    }
 
     final itemsToDisplay = galleryState.items.where((item) {
       if (showNsfw) return true;
       if (item is FullImageItem) return !item.metadata.isNsfw;
-      // TemporaryImageItem은 일단 보여줌 (NSFW 필터링은 파싱 후에 적용)
       return true;
     }).toList();
 
-    // 동기화가 끝났는데도 아이템이 없는 경우 (또는 필터링으로 인해)
     if (itemsToDisplay.isEmpty) {
-      // galleryState.items는 있지만 필터링 후 0개 -> NSFW 필터링 안내
-      if (galleryState.items.isNotEmpty) {
-        return const Center(child: Text('NSFW 설정으로 인해 표시할 이미지가 없습니다.'));
-      }
-      // galleryState.items 자체가 0개 -> 초기 폴더 선택 화면
+      // 데이터는 로드되었으나, 표시할 아이템이 없는 경우 (폴더가 비었거나, 선택 전)
       return _buildInitialView();
     }
 
-    // 정상적으로 갤러리 표시
+    // 정상적으로 갤러리 UI를 표시
     return _buildGalleryView(itemsToDisplay, galleryState);
   }
 
@@ -138,7 +129,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
             itemCount: filteredItems.length + (galleryState.hasMore ? 1 : 0),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12.0, mainAxisSpacing: 12.0),
             itemBuilder: (context, index) {
-              if (index == filteredItems.length) {
+              if (index >= filteredItems.length) {
                 return galleryState.isLoadingMore ? const Center(child: CircularProgressIndicator()) : const SizedBox.shrink();
               }
 
@@ -154,34 +145,52 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     );
   }
 
+  /// [최종] In-Memory Cache를 사용하여 스크롤 성능을 극대화한 아이템 빌더
   Widget _buildGalleryItem(BuildContext context, GalleryItem item, List<GalleryItem> allItems) {
     if (item is FullImageItem) {
-      return InkWell(
-        onTap: () => _navigateToFullScreen(context, item.path, allItems),
-        onLongPress: () => _showContextMenu(context, ref, item.metadata),
-        child: Hero(
-          tag: item.path,
-          child: Image.file(
-            File(item.metadata.thumbnailPath),
-            fit: BoxFit.cover,
-            errorBuilder: (c, e, s) => Container(color: Colors.grey.shade300),
+      // 캐시 서비스의 상태가 변경되면 이 위젯도 다시 빌드되도록 watch
+      final imageCache = ref.watch(imageCacheProvider);
+      final cachedImage = imageCache.getImage(item.metadata.thumbnailPath);
+
+      // 1. 캐시에 이미지가 있으면 즉시 메모리에서 이미지를 빌드 (가장 빠름)
+      if (cachedImage != null) {
+        return InkWell(
+          onTap: () => _navigateToFullScreen(context, item.path, allItems),
+          onLongPress: () => _showContextMenu(context, ref, item.metadata),
+          child: Hero(
+            tag: item.path,
+            child: Image.memory(cachedImage, fit: BoxFit.cover, gaplessPlayback: true),
           ),
-        ),
+        );
+      }
+
+      // 2. 캐시에 없으면 디스크에서 로드하고, 로드가 끝나면 캐시에 저장 후 FutureBuilder로 빌드
+      return FutureBuilder(
+        future: imageCache.loadImage(item.metadata.thumbnailPath),
+        builder: (context, snapshot) {
+          // Future가 완료된 후 다시 캐시에서 이미지를 가져옴
+          final reloadedImage = imageCache.getImage(item.metadata.thumbnailPath);
+          if (reloadedImage != null) {
+            return InkWell(
+              onTap: () => _navigateToFullScreen(context, item.path, allItems),
+              onLongPress: () => _showContextMenu(context, ref, item.metadata),
+              child: Hero(
+                tag: item.path,
+                child: Image.memory(reloadedImage, fit: BoxFit.cover, gaplessPlayback: true),
+              ),
+            );
+          }
+          // 로딩 중이거나 실패 시 플레이스홀더 표시
+          return Container(color: Theme.of(context).colorScheme.surfaceVariant);
+        },
       );
     }
-    else if (item is TemporaryImageItem) {
-      return Container(
-        color: Theme.of(context).colorScheme.surfaceContainer,
-        child: const Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2.0),
-          ),
-        ),
-      );
-    }
-    return const SizedBox.shrink();
+
+    // 파싱 전 임시 아이템은 로딩 아이콘 표시
+    return Container(
+      color: Theme.of(context).colorScheme.surface,
+      child: const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.0))),
+    );
   }
 
   void _navigateToFullScreen(BuildContext context, String currentPath, List<GalleryItem> allItems) {
@@ -268,7 +277,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
         onTap: () { ref.read(galleryProvider.notifier).toggleNsfw(image); Navigator.pop(context); },
       ), const Divider(),
       ListTile(leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), title: Text('삭제', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        onTap: () { Navigator.pop(context); ref.read(galleryProvider.notifier).deleteImage(image); },
+        onTap: () { ref.read(galleryProvider.notifier).deleteImage(image); Navigator.pop(context); },
       ),
     ],
     ));

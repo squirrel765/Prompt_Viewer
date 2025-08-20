@@ -9,6 +9,8 @@ import 'package:photo_view/photo_view.dart';
 import 'package:prompt_viewer/providers/gallery_provider.dart';
 import 'package:prompt_viewer/providers/settings_provider.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
+// [핵심 수정] 아래 파일을 import 합니다.
+import 'package:prompt_viewer/services/metadata_parser_service.dart';
 
 enum DisplayMode { stableDiffusion, comfyUI, novelAI }
 
@@ -30,6 +32,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        // .notifier를 통해 메서드에 접근
         ref.read(galleryProvider.notifier).viewImage(widget.metadata.path);
       }
     });
@@ -58,6 +61,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             onPressed: () async {
               try {
                 final withMetadata = ref.read(configProvider).shareWithMetadata;
+                // sharingServiceProvider는 gallery_provider.dart에 정의되어 있음
                 await ref.read(sharingServiceProvider).shareImageFile(
                   widget.metadata.path,
                   withMetadata: withMetadata,
@@ -146,7 +150,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
         child: Text(
           title,
           style: TextStyle(
-            // [경고 수정] withOpacity -> withAlpha
             color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withAlpha(179),
             fontWeight: FontWeight.bold,
             fontSize: 14,
@@ -171,7 +174,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     if (widget.metadata.a1111Parameters == null || widget.metadata.a1111Parameters!.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('Stable Diffusion 데이터가 없습니다.')));
     }
-    // [오류 수정] 이제 정상적으로 provider를 찾을 수 있습니다.
+    // [수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final parsedData = ref.read(metadataParserProvider).parseA1111Parameters(widget.metadata.a1111Parameters!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,7 +187,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   }
 
   Widget _buildComfyUIView() {
-    // [오류 수정] 이제 정상적으로 provider를 찾을 수 있습니다.
+    // [수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final formattedJson = ref.read(metadataParserProvider).formatJson(widget.metadata.comfyUIWorkflow);
     if(formattedJson.contains("데이터가 없습니다")){
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('ComfyUI 데이터가 없습니다.')));
@@ -196,7 +199,7 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     if (widget.metadata.naiComment == null || widget.metadata.naiComment!.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('NovelAI 데이터가 없습니다.')));
     }
-    // [오류 수정] 이제 정상적으로 provider를 찾을 수 있습니다.
+    // [수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final parsedData = ref.read(metadataParserProvider).parseNaiParameters(widget.metadata.naiComment!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,7 +244,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
-              // [경고 수정] surfaceVariant -> surfaceContainerHighest
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12.0),
               border: Border.all(color: Theme.of(context).dividerColor),

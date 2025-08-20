@@ -47,7 +47,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     super.dispose();
   }
 
-  // --- START: [추가] 갤러리 화면에서 컨텍스트 메뉴 관련 함수들을 가져옴 ---
   void _showContextMenu(BuildContext context, ImageMetadata image) {
     showModalBottomSheet(context: context, builder: (ctx) => Wrap(children: <Widget>[
       ListTile(leading: const Icon(Icons.info_outline), title: const Text('자세히 보기 (프롬프트)'),
@@ -86,29 +85,37 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       ],
     )));
   }
-  // --- END: [추가] ---
-
 
   @override
   Widget build(BuildContext context) {
-    final galleryState = ref.watch(galleryProvider);
-    final allImages = galleryState.items.whereType<FullImageItem>().map((item) => item.metadata).toList();
-
     final allPresets = ref.watch(presetProvider);
     final showNsfw = ref.watch(configProvider).showNsfw;
-
-    final imagesToDisplay = showNsfw ? allImages : allImages.where((img) => !img.isNsfw).toList();
     final presetsToDisplay = showNsfw ? allPresets : allPresets.where((p) => !p.isNsfw).toList();
-    final List<dynamic> results = _getResults(imagesToDisplay, presetsToDisplay);
+
+    // [핵심 수정] galleryProvider의 AsyncValue를 watch 합니다.
+    final galleryAsyncValue = ref.watch(galleryProvider);
 
     return Column(
       children: [
         _buildSearchBar(),
         _buildFilterChips(),
         Expanded(
-          child: results.isEmpty
-              ? const Center(child: Text('결과가 없습니다.'))
-              : _buildResultsGrid(results),
+          // [핵심 수정] .when을 사용하여 AsyncValue의 상태에 따라 UI를 분기합니다.
+          child: galleryAsyncValue.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Center(child: Text('이미지를 불러올 수 없습니다: $err')),
+            data: (galleryState) {
+              // data 상태일 때만 galleryState.items에 안전하게 접근할 수 있습니다.
+              final allImages = galleryState.items.whereType<FullImageItem>().map((item) => item.metadata).toList();
+              final imagesToDisplay = showNsfw ? allImages : allImages.where((img) => !img.isNsfw).toList();
+              final List<dynamic> results = _getResults(imagesToDisplay, presetsToDisplay);
+
+              if (results.isEmpty) {
+                return const Center(child: Text('결과가 없습니다.'));
+              }
+              return _buildResultsGrid(results);
+            },
+          ),
         ),
       ],
     );
@@ -209,7 +216,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   Widget _buildImageResultCard(ImageMetadata image) {
     return InkWell(
-      // [수정] onTap과 onLongPress 핸들러 추가
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(metadata: image))),
       onLongPress: () => _showContextMenu(context, image),
       child: ClipRRect(
