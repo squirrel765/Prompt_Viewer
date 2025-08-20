@@ -13,9 +13,6 @@ import 'package:path/path.dart' as p;
 import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
 
-// [수정] UI 렌더링 루프에서 실시간 썸네일 생성 로직을 제거했으므로,
-// _generateThumbnailIsolate 함수는 이제 이 파일에서 필요하지 않습니다.
-
 class GalleryScreen extends ConsumerStatefulWidget {
   const GalleryScreen({super.key});
 
@@ -30,12 +27,22 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   @override
   void initState() {
     super.initState();
-    // 위젯이 빌드된 후 첫 데이터 로드를 요청
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(galleryProvider.notifier).initialLoad();
-    });
 
-    // 스크롤 리스너 추가하여 페이지네이션 구현
+    // --- START: 핵심 수정 부분 ---
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final galleryState = ref.read(galleryProvider);
+      final folderPath = ref.read(folderPathProvider);
+
+      // [수정] 오직 폴더가 선택되어 있고, 갤러리 아이템이 비어 있으며, 로딩 중도 아닐 때만 initialLoad를 호출합니다.
+      // 이렇게 하면 다른 탭에 갔다가 돌아왔을 때 상태가 초기화되는 것을 방지할 수 있습니다.
+      if (folderPath != null && galleryState.items.isEmpty && !galleryState.isLoading) {
+        ref.read(galleryProvider.notifier).initialLoad();
+      }
+    });
+    // --- END: 핵심 수정 부분 ---
+
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300) {
         ref.read(galleryProvider.notifier).loadMoreImages();
@@ -74,22 +81,35 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   Widget build(BuildContext context) {
     final galleryState = ref.watch(galleryProvider);
     final showNsfw = ref.watch(configProvider).showNsfw;
+    final hasInitialFolder = ref.watch(folderPathProvider) != null;
 
+    // 동기화 중(isLoading)이면서 아이템이 비어있을 때
     if (galleryState.isLoading && galleryState.items.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      // 이전에 선택한 폴더가 있다면 로딩 인디케이터를 보여줌
+      return hasInitialFolder
+          ? const Center(child: CircularProgressIndicator())
+          : _buildInitialView(); // 선택한 폴더가 아예 없다면 초기 폴더 선택 화면
     }
 
     final itemsToDisplay = galleryState.items.where((item) {
       if (showNsfw) return true;
       if (item is FullImageItem) return !item.metadata.isNsfw;
+      // TemporaryImageItem은 일단 보여줌 (NSFW 필터링은 파싱 후에 적용)
       return true;
     }).toList();
 
-    return itemsToDisplay.isEmpty && galleryState.items.isNotEmpty
-        ? const Center(child: Text('NSFW 설정으로 인해 표시할 이미지가 없습니다.'))
-        : itemsToDisplay.isEmpty
-        ? _buildInitialView()
-        : _buildGalleryView(itemsToDisplay, galleryState);
+    // 동기화가 끝났는데도 아이템이 없는 경우 (또는 필터링으로 인해)
+    if (itemsToDisplay.isEmpty) {
+      // galleryState.items는 있지만 필터링 후 0개 -> NSFW 필터링 안내
+      if (galleryState.items.isNotEmpty) {
+        return const Center(child: Text('NSFW 설정으로 인해 표시할 이미지가 없습니다.'));
+      }
+      // galleryState.items 자체가 0개 -> 초기 폴더 선택 화면
+      return _buildInitialView();
+    }
+
+    // 정상적으로 갤러리 표시
+    return _buildGalleryView(itemsToDisplay, galleryState);
   }
 
   Widget _buildInitialView() {
@@ -110,7 +130,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 
     return Column(
       children: [
-        _buildFolderTabs(folderPaths),
+        _buildFolderTabsAndCount(folderPaths, filteredItems.length),
         Expanded(
           child: GridView.builder(
             controller: _scrollController,
@@ -134,9 +154,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     );
   }
 
-  /// [핵심 최종 수정] UI 렌더링 성능이 최적화된 아이템 빌더
   Widget _buildGalleryItem(BuildContext context, GalleryItem item, List<GalleryItem> allItems) {
-    // 1. 파싱 완료된 아이템: 저장된 썸네일 파일을 즉시 보여줌 (빠름)
     if (item is FullImageItem) {
       return InkWell(
         onTap: () => _navigateToFullScreen(context, item.path, allItems),
@@ -151,8 +169,6 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
         ),
       );
     }
-    // 2. 파싱 전 임시 아이템: 단순한 로딩 플레이스홀더를 보여줌 (매우 가벼움)
-    // GalleryProvider가 이 아이템을 FullImageItem으로 교체하면 자동으로 썸네일이 나타남.
     else if (item is TemporaryImageItem) {
       return Container(
         color: Theme.of(context).colorScheme.surfaceContainer,
@@ -188,13 +204,36 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
     );
   }
 
-  Widget _buildFolderTabs(List<String> folderPaths) {
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0), child: SizedBox(height: 36, child: ListView(scrollDirection: Axis.horizontal, children: [
-      _buildTab('전체', null, _selectedFolder == null),
-      const SizedBox(width: 8),
-      ...folderPaths.map((path) => Padding(padding: const EdgeInsets.only(right: 8.0), child: _buildTab(p.basename(path), path, _selectedFolder == path))),
-    ],
-    )),
+  Widget _buildFolderTabsAndCount(List<String> folderPaths, int imageCount) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 36,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _buildTab('전체', null, _selectedFolder == null),
+                  const SizedBox(width: 8),
+                  ...folderPaths.map((path) => Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: _buildTab(p.basename(path), path, _selectedFolder == path))),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            '$imageCount 개',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.bold,
+            ),
+          )
+        ],
+      ),
     );
   }
 

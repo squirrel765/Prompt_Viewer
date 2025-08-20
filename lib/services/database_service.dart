@@ -1,6 +1,5 @@
 // lib/services/database_service.dart
 
-import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:prompt_viewer/models/image_metadata.dart';
 import 'package:prompt_viewer/models/prompt_preset.dart';
@@ -91,9 +90,18 @@ class DatabaseService {
 
   // --- 이미지 관련 CRUD 함수들 ---
 
-  /// [신규] 점진적 로딩(페이지네이션)을 위한 이미지 조회 메서드
-  /// limit: 한 번에 가져올 개수
-  /// offset: 건너뛸 개수 (페이지 번호)
+  /// [신규] 증분 동기화를 위해 DB에 저장된 모든 이미지의 경로와 타임스탬프를 가져옵니다.
+  Future<Map<String, int>> getAllImagePathsAndTimestamps() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      imagesTable,
+      columns: ['path', 'timestamp'], // path와 timestamp 컬럼만 선택하여 효율성 증대
+    );
+
+    return { for (var map in maps) map['path'] as String: map['timestamp'] as int };
+  }
+
+  /// 점진적 로딩(페이지네이션)을 위한 이미지 조회 메서드
   Future<List<ImageMetadata>> getImagesPaginated(int limit, int offset) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -105,6 +113,7 @@ class DatabaseService {
     return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
   }
 
+  /// 단일 이미지 정보를 삽입하거나 업데이트합니다.
   Future<void> insertOrUpdateImage(ImageMetadata metadata) async {
     final db = await database;
     await db.insert(
@@ -114,12 +123,29 @@ class DatabaseService {
     );
   }
 
+  /// [신규] 성능 개선을 위한 배치(Batch) 삽입/업데이트 메서드
+  Future<void> insertOrUpdateImagesBatch(List<ImageMetadata> metadatas) async {
+    if (metadatas.isEmpty) return;
+    final db = await database;
+    final batch = db.batch();
+    for (final metadata in metadatas) {
+      batch.insert(
+        imagesTable,
+        metadata.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// 모든 이미지 정보를 가져옵니다. (주로 디버깅 또는 전체 데이터 필요시 사용)
   Future<List<ImageMetadata>> getAllImages() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(imagesTable, orderBy: 'timestamp DESC');
     return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
   }
 
+  /// 특정 폴더 경로에 속한 이미지들을 가져옵니다.
   Future<List<ImageMetadata>> getImagesByPath(String folderPath) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -130,11 +156,13 @@ class DatabaseService {
     return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
   }
 
+  /// 특정 경로의 이미지 정보를 DB에서 삭제합니다.
   Future<void> deleteImage(String path) async {
     final db = await database;
     await db.delete(imagesTable, where: 'path = ?', whereArgs: [path]);
   }
 
+  /// 즐겨찾기 상태를 업데이트합니다.
   Future<void> updateFavoriteStatus(String path, bool isFavorite) async {
     final db = await database;
     await db.update(
@@ -145,6 +173,7 @@ class DatabaseService {
     );
   }
 
+  /// NSFW 상태를 업데이트합니다.
   Future<void> updateImageNsfwStatus(String path, bool isNsfw) async {
     final db = await database;
     await db.update(
@@ -155,6 +184,7 @@ class DatabaseService {
     );
   }
 
+  /// 별점을 업데이트합니다.
   Future<void> updateImageRating(String path, double rating) async {
     final db = await database;
     await db.update(
@@ -165,11 +195,13 @@ class DatabaseService {
     );
   }
 
+  /// 조회수를 1 증가시킵니다.
   Future<void> incrementImageViewCount(String path) async {
     final db = await database;
     await db.rawUpdate('UPDATE $imagesTable SET view_count = view_count + 1 WHERE path = ?', [path]);
   }
 
+  /// 이미지 파일 경로가 변경되었을 때 DB의 경로를 업데이트합니다. (현재 앱에서는 사용되지 않음)
   Future<void> updateImagePath(String oldPath, String newPath) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(imagesTable, where: 'path = ?', whereArgs: [oldPath]);
@@ -185,6 +217,7 @@ class DatabaseService {
 
   // --- 프리셋 관련 CRUD 함수들 ---
 
+  /// 프리셋을 삽입하거나 업데이트합니다.
   Future<void> insertOrUpdatePreset(PromptPreset preset) async {
     final db = await database;
     await db.insert(
@@ -194,12 +227,14 @@ class DatabaseService {
     );
   }
 
+  /// 모든 프리셋을 가져옵니다.
   Future<List<PromptPreset>> getAllPresets() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(presetsTable, orderBy: 'title ASC');
     return List.generate(maps.length, (i) => PromptPreset.fromMap(maps[i]));
   }
 
+  /// 특정 ID의 프리셋을 삭제합니다.
   Future<void> deletePreset(String id) async {
     final db = await database;
     await db.delete(presetsTable, where: 'id = ?', whereArgs: [id]);

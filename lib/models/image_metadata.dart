@@ -57,4 +57,31 @@ class ImageMetadata {
       isNsfw: map['is_nsfw'] == 1,
     );
   }
+
+  // [추가] 데이터 병합을 위한 copyWith 메서드
+  ImageMetadata copyWith({
+    String? path,
+    String? thumbnailPath,
+    int? timestamp,
+    String? a1111Parameters,
+    String? comfyUIWorkflow,
+    String? naiComment,
+    bool? isFavorite,
+    double? rating,
+    int? viewCount,
+    bool? isNsfw,
+  }) {
+    return ImageMetadata(
+      path: path ?? this.path,
+      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+      timestamp: timestamp ?? this.timestamp,
+      a1111Parameters: a1111Parameters ?? this.a1111Parameters,
+      comfyUIWorkflow: comfyUIWorkflow ?? this.comfyUIWorkflow,
+      naiComment: naiComment ?? this.naiComment,
+      isFavorite: isFavorite ?? this.isFavorite,
+      rating: rating ?? this.rating,
+      viewCount: viewCount ?? this.viewCount,
+      isNsfw: isNsfw ?? this.isNsfw,
+    );
+  }
 }

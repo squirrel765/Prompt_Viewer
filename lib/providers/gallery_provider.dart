@@ -4,35 +4,30 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:prompt_viewer/main.dart'; // notificationService를 사용하기 위해 import
+import 'package:prompt_viewer/main.dart';
 import 'package:prompt_viewer/models/image_metadata.dart';
-import 'package:prompt_viewer/services/background_parser.dart';
+import 'package:prompt_viewer/providers/settings_provider.dart';
+// [수정] 이제 매니저 Isolate를 사용합니다.
+import 'package:prompt_viewer/services/manager_isolate.dart';
 import 'package:prompt_viewer/services/database_service.dart';
 import 'package:prompt_viewer/services/metadata_parser_service.dart';
 import 'package:prompt_viewer/services/sharing_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-// --- 갤러리 아이템의 상태를 표현하기 위한 클래스들 ---
 
-/// 모든 갤러리 아이템의 기본이 되는 추상 클래스
+// --- (GalleryItem, GalleryState, Provider 정의는 이전과 동일) ---
 abstract class GalleryItem {
   final String path;
   GalleryItem(this.path);
 }
-
-/// 파싱 전, 경로만 아는 상태의 임시 아이템
 class TemporaryImageItem extends GalleryItem {
   TemporaryImageItem(String path) : super(path);
 }
-
-/// 파싱 완료 후, 모든 메타데이터를 가진 완전한 아이템
 class FullImageItem extends GalleryItem {
   final ImageMetadata metadata;
   FullImageItem(this.metadata) : super(metadata.path);
 }
-
-/// GalleryProvider의 상태를 관리하는 클래스
 @immutable
 class GalleryState {
   final List<GalleryItem> items;
@@ -62,27 +57,28 @@ class GalleryState {
   }
 }
 
-// --- Provider 정의 ---
 final databaseServiceProvider = Provider<DatabaseService>((ref) => DatabaseService.instance);
-final folderPathProvider = StateProvider<String?>((ref) => null);
+final folderPathProvider = Provider<String?>((ref) {
+  return ref.watch(configProvider).lastSyncedFolderPath;
+});
 final sharingServiceProvider = Provider<SharingService>((ref) => SharingService());
 final metadataParserProvider = Provider<MetadataParserService>((ref) => MetadataParserService());
 final galleryProvider = StateNotifierProvider<GalleryNotifier, GalleryState>((ref) => GalleryNotifier(ref));
 
-// --- State Notifier 클래스 ---
+
 class GalleryNotifier extends StateNotifier<GalleryState> {
   final Ref _ref;
   GalleryNotifier(this._ref) : super(const GalleryState());
 
   bool _isSyncing = false;
-  Isolate? _syncIsolate;
+  Isolate? _managerIsolate; // [이름 변경] syncIsolate -> managerIsolate
   ReceivePort? _mainReceivePort;
   static const _pageSize = 30;
 
-  // [최적화] 경로를 키로 사용하여 아이템의 인덱스를 빠르게 찾기 위한 Map
   final Map<String, int> _itemIndexMap = {};
+  final List<ImageMetadata> _metadataBatch = [];
+  static const _batchSize = 50;
 
-  /// 앱 시작 시 또는 새로고침 시 DB에서 첫 페이지만 불러옵니다.
   Future<void> initialLoad() async {
     state = state.copyWith(isLoading: true, items: [], hasMore: true);
     final dbService = _ref.read(databaseServiceProvider);
@@ -101,7 +97,6 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
     );
   }
 
-  /// DB에서 다음 페이지를 불러와 기존 목록에 추가합니다.
   Future<void> loadMoreImages() async {
     if (state.isLoadingMore || !state.hasMore) return;
     state = state.copyWith(isLoadingMore: true);
@@ -123,19 +118,20 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
     );
   }
 
-  /// [핵심 최종 수정] 상태 업데이트를 최소화하여 성능을 극대화한 동기화 메서드
   Future<void> syncFolder(String folderPath) async {
     if (_isSyncing) {
       _cleanupIsolate();
     }
     _isSyncing = true;
-    _itemIndexMap.clear();
+    _metadataBatch.clear();
 
-    _ref.read(folderPathProvider.notifier).state = folderPath;
-    state = state.copyWith(isLoading: true, items: []);
+    _ref.read(configProvider.notifier).setLastSyncedFolderPath(folderPath);
+    state = state.copyWith(isLoading: true);
+
+    final dbService = _ref.read(databaseServiceProvider);
+    final existingFiles = await dbService.getAllImagePathsAndTimestamps();
 
     _mainReceivePort = ReceivePort();
-    final dbService = _ref.read(databaseServiceProvider);
     final thumbsDir = await getApplicationDocumentsDirectory();
     final thumbPathRoot = p.join(thumbsDir.path, 'thumbnails');
 
@@ -144,8 +140,10 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
         folderPath: folderPath,
         thumbPathRoot: thumbPathRoot,
         mainSendPort: _mainReceivePort!.sendPort,
+        existingFiles: existingFiles,
       );
-      _syncIsolate = await Isolate.spawn(backgroundSyncAndParse, request);
+      // [수정] 이제 manager_isolate.dart의 manageSyncProcess 함수를 호출
+      _managerIsolate = await Isolate.spawn(manageSyncProcess, request);
 
       int totalFound = 0;
       int parsedCount = 0;
@@ -159,37 +157,91 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
 
         if (message is FileFoundMessage) {
           totalFound = message.paths.length;
-          final currentItems = state.items;
-          final newPaths = message.paths.where((path) => !_itemIndexMap.containsKey(path));
+          final currentItems = List<GalleryItem>.from(state.items);
+          final foundPathsSet = message.paths.toSet();
 
+          // 삭제된 파일 처리
+          final deletedPaths = state.items
+              .where((item) => !foundPathsSet.contains(item.path))
+              .map((item) => item.path)
+              .toList();
+          if (deletedPaths.isNotEmpty) {
+            for (final path in deletedPaths) {
+              await dbService.deleteImage(path);
+              final itemToDelete = state.items.firstWhere((item) => item.path == path, orElse: () => TemporaryImageItem(''));
+              if (itemToDelete is FullImageItem && itemToDelete.metadata.thumbnailPath.isNotEmpty) {
+                final thumbFile = File(itemToDelete.metadata.thumbnailPath);
+                if (await thumbFile.exists()) {
+                  await thumbFile.delete();
+                }
+              }
+            }
+          }
+          currentItems.removeWhere((item) => !foundPathsSet.contains(item.path));
+
+          // 새로 추가된 파일 처리
+          final existingPaths = _itemIndexMap.keys.toSet();
+          final newPaths = message.paths.where((p) => !existingPaths.contains(p));
           for (final path in newPaths) {
             currentItems.add(TemporaryImageItem(path));
-            _itemIndexMap[path] = currentItems.length - 1;
           }
-          state = state.copyWith(items: currentItems, isLoading: false);
+
+          _itemIndexMap.clear();
+          for (int i = 0; i < currentItems.length; i++) {
+            _itemIndexMap[currentItems[i].path] = i;
+          }
+
+          state = state.copyWith(items: currentItems);
           await notificationService.showProgressNotification(totalFound, parsedCount, "$parsedCount / $totalFound 개 처리 중...");
         }
         else if (message is ParsingResultMessage) {
           parsedCount++;
-          await dbService.insertOrUpdateImage(message.metadata);
+          // [수정] message의 타입이 변경되었으므로, 내부 result 객체에 접근
+          final result = message.result;
+          final index = _itemIndexMap[result.path];
+          if (index == null || index >= state.items.length) return;
 
-          final index = _itemIndexMap[message.metadata.path];
-          if (index != null && index < state.items.length) {
-            state.items[index] = FullImageItem(message.metadata);
+          final currentItem = state.items[index];
+          ImageMetadata existingMetadata;
 
-            if (parsedCount % 20 == 0 || parsedCount == totalFound) {
-              state = state.copyWith(); // UI 갱신을 위해 호출
-            }
+          if (currentItem is FullImageItem) {
+            existingMetadata = currentItem.metadata;
+          } else {
+            existingMetadata = ImageMetadata(
+                path: result.path,
+                thumbnailPath: result.thumbnailPath,
+                timestamp: result.timestamp);
           }
+
+          final finalMetadata = existingMetadata.copyWith(
+            thumbnailPath: result.thumbnailPath,
+            timestamp: result.timestamp,
+            a1111Parameters: result.a1111Parameters,
+            comfyUIWorkflow: result.comfyUIWorkflow,
+            naiComment: result.naiComment,
+          );
+
+          _metadataBatch.add(finalMetadata);
+
+          final newItems = List<GalleryItem>.from(state.items);
+          newItems[index] = FullImageItem(finalMetadata);
+          state = state.copyWith(items: newItems);
+
+          if (_metadataBatch.length >= _batchSize) {
+            await _flushMetadataBatch();
+          }
+
           await notificationService.showProgressNotification(totalFound, parsedCount, "$parsedCount / $totalFound 개 처리 중...");
         }
         else if (message is SyncCompleteMessage) {
+          await _flushMetadataBatch();
+          state = state.copyWith(isLoading: false);
+
           await notificationService.showCompletionNotification("${message.totalCount}개 이미지 동기화 완료!");
-          state = state.copyWith(); // 마지막 변경사항 반영
           _cleanupIsolate();
+
           Future.delayed(const Duration(seconds: 2), () async {
             await notificationService.cancelNotification();
-            await initialLoad();
           });
         }
         else if (message is SyncErrorMessage) {
@@ -206,65 +258,77 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
     }
   }
 
+  // --- 나머지 함수들은 변경 없음 ---
+  Future<void> _flushMetadataBatch() async {
+    if (_metadataBatch.isEmpty) return;
+    final dbService = _ref.read(databaseServiceProvider);
+    await dbService.insertOrUpdateImagesBatch(List.from(_metadataBatch));
+    _metadataBatch.clear();
+  }
   void _cleanupIsolate() {
     _isSyncing = false;
     _mainReceivePort?.close();
-    _syncIsolate?.kill(priority: Isolate.immediate);
-    _mainReceivePort = null;
-    _syncIsolate = null;
+    if (_managerIsolate != null) {
+      _managerIsolate!.kill(priority: Isolate.immediate);
+      _managerIsolate = null;
+    }
   }
-
   Future<void> toggleFavorite(ImageMetadata image) async {
     final dbService = _ref.read(databaseServiceProvider);
     final newFavoriteState = !image.isFavorite;
     await dbService.updateFavoriteStatus(image.path, newFavoriteState);
 
-    final newItems = state.items.map((item) {
-      if (item is FullImageItem && item.path == image.path) {
+    final index = _itemIndexMap[image.path];
+    if (index != null && index < state.items.length) {
+      final item = state.items[index];
+      if (item is FullImageItem) {
+        final newItems = List<GalleryItem>.from(state.items);
         item.metadata.isFavorite = newFavoriteState;
+        newItems[index] = FullImageItem(item.metadata.copyWith());
+        state = state.copyWith(items: newItems);
       }
-      return item;
-    }).toList();
-    state = state.copyWith(items: newItems);
+    }
   }
-
   Future<void> toggleNsfw(ImageMetadata image) async {
     final dbService = _ref.read(databaseServiceProvider);
     final newNsfwState = !image.isNsfw;
     await dbService.updateImageNsfwStatus(image.path, newNsfwState);
-    final newItems = state.items.map((item) {
-      if (item is FullImageItem && item.path == image.path) {
+    final index = _itemIndexMap[image.path];
+    if (index != null && index < state.items.length) {
+      final item = state.items[index];
+      if (item is FullImageItem) {
+        final newItems = List<GalleryItem>.from(state.items);
         item.metadata.isNsfw = newNsfwState;
+        newItems[index] = FullImageItem(item.metadata.copyWith());
+        state = state.copyWith(items: newItems);
       }
-      return item;
-    }).toList();
-    state = state.copyWith(items: newItems);
+    }
   }
-
   Future<void> rateImage(String path, double rating) async {
     final dbService = _ref.read(databaseServiceProvider);
     await dbService.updateImageRating(path, rating);
-    final newItems = state.items.map((item) {
-      if (item is FullImageItem && item.path == path) {
+    final index = _itemIndexMap[path];
+    if (index != null && index < state.items.length) {
+      final item = state.items[index];
+      if (item is FullImageItem) {
+        final newItems = List<GalleryItem>.from(state.items);
         item.metadata.rating = rating;
+        newItems[index] = FullImageItem(item.metadata.copyWith());
+        state = state.copyWith(items: newItems);
       }
-      return item;
-    }).toList();
-    state = state.copyWith(items: newItems);
+    }
   }
-
   Future<void> viewImage(String path) async {
     final dbService = _ref.read(databaseServiceProvider);
     await dbService.incrementImageViewCount(path);
-    final newItems = state.items.map((item) {
-      if (item is FullImageItem && item.path == path) {
+    final index = _itemIndexMap[path];
+    if (index != null && index < state.items.length) {
+      final item = state.items[index];
+      if (item is FullImageItem) {
         item.metadata.viewCount++;
       }
-      return item;
-    }).toList();
-    state = state.copyWith(items: newItems);
+    }
   }
-
   Future<bool> deleteImage(ImageMetadata image) async {
     final dbService = _ref.read(databaseServiceProvider);
     try {
@@ -272,7 +336,6 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
       if (await originalFile.exists()) {
         await originalFile.delete();
       }
-
       if (image.thumbnailPath.isNotEmpty) {
         final thumbFile = File(image.thumbnailPath);
         if (await thumbFile.exists()) {
@@ -280,10 +343,8 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
         }
       }
       await dbService.deleteImage(image.path);
-
-      _itemIndexMap.remove(image.path);
-      state = state.copyWith(items: state.items.where((item) => item.path != image.path).toList());
-      // Rebuild index map after deletion
+      final newItems = state.items.where((item) => item.path != image.path).toList();
+      state = state.copyWith(items: newItems);
       _rebuildIndexMap();
       return true;
     } catch (e) {
@@ -291,14 +352,12 @@ class GalleryNotifier extends StateNotifier<GalleryState> {
       return false;
     }
   }
-
   void _rebuildIndexMap() {
     _itemIndexMap.clear();
     for(int i = 0; i < state.items.length; i++) {
       _itemIndexMap[state.items[i].path] = i;
     }
   }
-
   @override
   void dispose() {
     _cleanupIsolate();

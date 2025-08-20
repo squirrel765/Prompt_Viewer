@@ -10,6 +10,7 @@ import 'package:prompt_viewer/models/image_metadata.dart';
 import 'package:prompt_viewer/models/prompt_preset.dart';
 import 'package:prompt_viewer/screens/detail_screen.dart';
 import 'package:prompt_viewer/screens/preset_detail_screen.dart';
+import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 
 enum ExploreFilter { none, latest, popular, recommended }
 
@@ -46,13 +47,52 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     super.dispose();
   }
 
+  // --- START: [추가] 갤러리 화면에서 컨텍스트 메뉴 관련 함수들을 가져옴 ---
+  void _showContextMenu(BuildContext context, ImageMetadata image) {
+    showModalBottomSheet(context: context, builder: (ctx) => Wrap(children: <Widget>[
+      ListTile(leading: const Icon(Icons.info_outline), title: const Text('자세히 보기 (프롬프트)'),
+        onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(metadata: image))); },
+      ), const Divider(),
+      ListTile(leading: Icon(image.isFavorite ? Icons.star : Icons.star_border), title: Text(image.isFavorite ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'),
+        onTap: () { ref.read(galleryProvider.notifier).toggleFavorite(image); Navigator.pop(ctx); },
+      ),
+      ListTile(leading: const Icon(Icons.star_half_outlined), title: const Text('별점 매기기'),
+        onTap: () { Navigator.pop(ctx); _showRatingDialog(context, image); },
+      ),
+      ListTile(leading: const Icon(Icons.add_photo_alternate_outlined), title: const Text('프리셋 만들기'),
+        onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (context) => PresetEditorScreen(initialImagePath: image.path), fullscreenDialog: true)); },
+      ),
+      ListTile(leading: Icon(image.isNsfw ? Icons.visibility_off_outlined : Icons.visibility_outlined), title: Text(image.isNsfw ? 'NSFW 해제' : 'NSFW로 표시'),
+        onTap: () { ref.read(galleryProvider.notifier).toggleNsfw(image); Navigator.pop(ctx); },
+      ), const Divider(),
+      ListTile(leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), title: Text('삭제', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        onTap: () { Navigator.pop(ctx); ref.read(galleryProvider.notifier).deleteImage(image); },
+      ),
+    ],
+    ));
+  }
+
+  Future<void> _showRatingDialog(BuildContext context, ImageMetadata image) async {
+    double currentRating = image.rating;
+    return showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+      title: const Text('별점 매기기'),
+      content: Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (index) => IconButton(
+        icon: Icon(index < currentRating ? Icons.star : Icons.star_border, color: Colors.amber),
+        onPressed: () => setDialogState(() => currentRating = index + 1.0),
+      ))),
+      actions: [
+        TextButton(child: const Text('취소'), onPressed: () => Navigator.pop(ctx)),
+        TextButton(child: const Text('저장'), onPressed: () { ref.read(galleryProvider.notifier).rateImage(image.path, currentRating); Navigator.pop(ctx); }),
+      ],
+    )));
+  }
+  // --- END: [추가] ---
+
+
   @override
   Widget build(BuildContext context) {
-    // --- START: 수정된 부분 ---
     final galleryState = ref.watch(galleryProvider);
-    // galleryState.items 리스트에서 FullImageItem 타입만 골라내고, 그 안의 metadata를 추출하여 List<ImageMetadata>를 만듭니다.
     final allImages = galleryState.items.whereType<FullImageItem>().map((item) => item.metadata).toList();
-    // --- END: 수정된 부분 ---
 
     final allPresets = ref.watch(presetProvider);
     final showNsfw = ref.watch(configProvider).showNsfw;
@@ -98,7 +138,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         sortedImages.sort((a, b) => b.viewCount.compareTo(a.viewCount));
         break;
       case ExploreFilter.none:
-      // default clause is not needed because all cases are covered.
     }
     return sortedImages;
   }
@@ -111,7 +150,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         decoration: InputDecoration(
           hintText: '프롬프트 내용으로 검색...',
           filled: true,
-          // [경고 수정] surfaceVariant -> surfaceContainerHighest, withOpacity -> withAlpha
           fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(128),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(24.0), borderSide: BorderSide.none),
           prefixIcon: const Icon(Icons.search),
@@ -171,7 +209,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   Widget _buildImageResultCard(ImageMetadata image) {
     return InkWell(
+      // [수정] onTap과 onLongPress 핸들러 추가
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(metadata: image))),
+      onLongPress: () => _showContextMenu(context, image),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12.0),
         child: Image.file(File(image.thumbnailPath), fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image_outlined, color: Colors.grey)),

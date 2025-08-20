@@ -14,6 +14,8 @@ class AppConfig {
   final bool showNsfw;
   final bool shareWithMetadata;
   final String? civitaiApiKey; // Civitai API 키
+  // [추가] 마지막으로 동기화한 폴더 경로를 저장할 변수
+  final String? lastSyncedFolderPath;
 
   AppConfig({
     required this.presets,
@@ -21,6 +23,7 @@ class AppConfig {
     required this.showNsfw,
     required this.shareWithMetadata,
     this.civitaiApiKey,
+    this.lastSyncedFolderPath, // [추가]
   });
 
   /// 앱의 기본 설정을 정의합니다.
@@ -33,6 +36,7 @@ class AppConfig {
       showNsfw: true,
       shareWithMetadata: true,
       civitaiApiKey: null,
+      lastSyncedFolderPath: null, // [추가]
     );
   }
 
@@ -43,6 +47,7 @@ class AppConfig {
     bool? showNsfw,
     bool? shareWithMetadata,
     String? civitaiApiKey,
+    String? lastSyncedFolderPath, // [추가]
   }) {
     return AppConfig(
       presets: presets ?? this.presets,
@@ -50,6 +55,7 @@ class AppConfig {
       showNsfw: showNsfw ?? this.showNsfw,
       shareWithMetadata: shareWithMetadata ?? this.shareWithMetadata,
       civitaiApiKey: civitaiApiKey ?? this.civitaiApiKey,
+      lastSyncedFolderPath: lastSyncedFolderPath ?? this.lastSyncedFolderPath, // [추가]
     );
   }
 
@@ -60,6 +66,7 @@ class AppConfig {
     'showNsfw': showNsfw,
     'shareWithMetadata': shareWithMetadata,
     'civitaiApiKey': civitaiApiKey,
+    'lastSyncedFolderPath': lastSyncedFolderPath, // [추가]
   };
 
   /// JSON 맵으로부터 AppConfig 객체를 생성합니다.
@@ -68,7 +75,8 @@ class AppConfig {
     parsingStrategy: List<String>.from(json['parsingStrategy']),
     showNsfw: json['showNsfw'] ?? true,
     shareWithMetadata: json['shareWithMetadata'] ?? true,
-    civitaiApiKey: json['civitaiApiKey'], // 키가 없을 수 있으므로 null 허용
+    civitaiApiKey: json['civitaiApiKey'],
+    lastSyncedFolderPath: json['lastSyncedFolderPath'], // [추가]
   );
 }
 
@@ -110,6 +118,12 @@ class ConfigNotifier extends StateNotifier<AppConfig> {
   /// Civitai API 키를 변경하고 저장합니다.
   void setCivitaiApiKey(String? key) {
     state = state.copyWith(civitaiApiKey: key);
+    _saveConfig();
+  }
+
+  // [추가] 마지막 동기화 폴더 경로를 변경하고 저장합니다.
+  void setLastSyncedFolderPath(String path) {
+    state = state.copyWith(lastSyncedFolderPath: path);
     _saveConfig();
   }
 

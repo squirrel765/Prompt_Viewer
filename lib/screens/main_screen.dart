@@ -1,6 +1,8 @@
 // lib/screens/main_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:prompt_viewer/providers/gallery_provider.dart'; // [추가]
 import 'package:prompt_viewer/screens/app_drawer.dart';
 import 'package:prompt_viewer/screens/gallery_screen.dart';
 import 'package:prompt_viewer/screens/explore_screen.dart';
@@ -9,14 +11,15 @@ import 'package:prompt_viewer/screens/save_screen.dart';
 import 'package:prompt_viewer/screens/my_page_screen.dart';
 import 'package:prompt_viewer/screens/settings_screen.dart';
 
-class MainScreen extends StatefulWidget {
+// [수정] ConsumerStatefulWidget으로 변경하여 ref를 사용할 수 있게 합니다.
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   late final PageController _pageController;
   int _selectedIndex = 0;
 
@@ -53,40 +56,65 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  // [추가] 새로고침 로직
+  Future<void> _refreshCurrentFolder() async {
+    final currentFolder = ref.read(folderPathProvider);
+    if (currentFolder != null && currentFolder.isNotEmpty) {
+      await ref.read(galleryProvider.notifier).syncFolder(currentFolder);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('먼저 폴더를 선택해주세요.')),
+      );
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
-    // [수정] 테마에서 색상을 가져오기 위해 변수 선언
     final theme = Theme.of(context);
     final appBarTheme = theme.appBarTheme;
+    // [추가] galleryProvider의 상태를 감시합니다.
+    final galleryState = ref.watch(galleryProvider);
 
     return Scaffold(
-      // [수정] 하드코딩된 배경색 제거 (테마에서 자동 적용)
-      // backgroundColor: Colors.white,
       appBar: AppBar(
-        // [수정] 하드코딩된 배경색, 아이콘색, 글자색 모두 제거 (테마에서 자동 적용)
-        // backgroundColor: Colors.white,
-        // elevation: 0,
         leading: Builder(
           builder: (context) => IconButton(
-            icon: const Icon(Icons.menu), // 색상 지정 제거
+            icon: const Icon(Icons.menu),
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
         centerTitle: true,
         title: Text(
           _titleOptions[_selectedIndex],
-          // [수정] appBarTheme에 정의된 스타일을 사용하도록 변경
           style: appBarTheme.titleTextStyle,
         ),
         actions: [
-          if (_selectedIndex == 0)
+          // [핵심 수정] 홈 화면일 때 로딩 상태에 따라 다른 아이콘을 표시합니다.
+          if (_selectedIndex == 0) ...[
+            if (galleryState.isLoading)
+              const Padding(
+                padding: EdgeInsets.only(right: 16.0),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 3.0),
+                ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: '새로고침',
+                onPressed: _refreshCurrentFolder,
+              ),
             IconButton(
-              icon: const Icon(Icons.search), // 색상 지정 제거
+              icon: const Icon(Icons.search),
               onPressed: () => _onItemTapped(1),
             ),
+          ],
           if (_selectedIndex == 4)
             IconButton(
-              icon: const Icon(Icons.settings_outlined), // 색상 지정 제거
+              icon: const Icon(Icons.settings_outlined),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -116,13 +144,6 @@ class _MainScreenState extends State<MainScreen> {
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        // [수정] 모든 색상 관련 속성을 제거 (테마에서 자동 적용)
-        // selectedItemColor: Theme.of(context).colorScheme.primary,
-        // unselectedItemColor: Colors.grey,
-        // showUnselectedLabels: true,
-        // type: BottomNavigationBarType.fixed,
-        // backgroundColor: Colors.white,
-        // elevation: 5,
       ),
     );
   }
