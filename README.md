@@ -15,7 +15,7 @@
 
 | 갤러리 & 검색 | 프롬프트 상세 보기 | 프리셋으로 관리 | Civitai 연동 |
 | :---: | :---: | :---: | :---: |
-| ![홈 화면](example_images/home.jpg)| ![Image](https://github.com/user-attachments/assets/1d37c905-5168-4e94-818a-1f14a0311e56) | ![프리셋 생성](https://github.com/user-attachments/assets/051667f8-5674-4204-b97c-24f64c01c901) | ![Civitai 연동](https://github.com/user-attachments/assets/54f2bcd4-4055-4b9b-ab09-c6e825d36f03) |
+| <img src="example_images/home.jpg" height="300"/> | <img src="example_images/prompt.jpg" height="300"/>  |<img src="example_images/presets.jpg" height="300"/>  | <img src="example_images/civitai.jpg" height="300"/>  |
 | **폴더별**로 이미지를 보고 **프롬프트 내용**으로 검색할 수 있습니다. | 이미지를 길게 눌러 **즐겨찾기, 별점, NSFW 지정** 등을 할 수 있습니다. | 마음에 드는 프롬프트와 이미지를 **하나의 프리셋**으로 저장하세요. | **Civitai URL**만으로 이미지와 프롬프트를 바로 가져올 수 있습니다. |
 
 <br>
@@ -31,10 +31,11 @@
     <td align="center"><strong>태그 라이브러리</strong></td>
   </tr>
   <tr>
-    <td align="center"><img src="https://github.com/user-attachments/assets/20ef7a5c-04a3-489c-b502-9a0bf9837dc7" width="200"></td>
-    <td align="center"><img src="https://github.com/user-attachments/assets/51591bf8-a47c-4540-95e0-5f4ef2c63f04" width="200"></td>
-    <td align="center"><img src="https://github.com/user-attachments/assets/8312cb25-7679-4c48-be8d-34b27cde2157" width="200"></td>
-    <td align="center"><img src="https://github.com/user-attachments/assets/023e4a91-6ce5-4805-b7ca-0da4b3fbb796" width="200"></td>
+    <td align="center"><img src="example_images/tag_gen.jpg" width="200"></td>
+    <td align="center"><img src="example_images/my_page.jpg" width="200"></td>
+    <td align="center"><img src="example_images/setting.jpg" width="200"></td>
+    <td align="center"><img src="example_images/tag_library.jpg" width="200"></td>
+   
   </tr>
 </table>
 </details>
