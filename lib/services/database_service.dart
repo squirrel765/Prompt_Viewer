@@ -90,7 +90,7 @@ class DatabaseService {
 
   // --- 이미지 관련 CRUD 함수들 ---
 
-  /// [신규] 증분 동기화를 위해 DB에 저장된 모든 이미지의 경로와 타임스탬프를 가져옵니다.
+  /// 증분 동기화를 위해 DB에 저장된 모든 이미지의 경로와 타임스탬프를 가져옵니다.
   Future<Map<String, int>> getAllImagePathsAndTimestamps() async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -101,7 +101,7 @@ class DatabaseService {
     return { for (var map in maps) map['path'] as String: map['timestamp'] as int };
   }
 
-  /// 점진적 로딩(페이지네이션)을 위한 이미지 조회 메서드
+  /// 점진적 로딩(페이지네이션)을 위한 이미지 조회 메서드 (초기 로딩용)
   Future<List<ImageMetadata>> getImagesPaginated(int limit, int offset) async {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
@@ -113,17 +113,14 @@ class DatabaseService {
     return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
   }
 
-  /// 단일 이미지 정보를 삽입하거나 업데이트합니다.
-  Future<void> insertOrUpdateImage(ImageMetadata metadata) async {
+  /// [필수] 모든 이미지 정보를 가져옵니다 (백그라운드 전체 로드 및 전체 검색용).
+  Future<List<ImageMetadata>> getAllImages() async {
     final db = await database;
-    await db.insert(
-      imagesTable,
-      metadata.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final List<Map<String, dynamic>> maps = await db.query(imagesTable, orderBy: 'timestamp DESC');
+    return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
   }
 
-  /// [신규] 성능 개선을 위한 배치(Batch) 삽입/업데이트 메서드
+  /// 성능 개선을 위한 배치(Batch) 삽입/업데이트 메서드
   Future<void> insertOrUpdateImagesBatch(List<ImageMetadata> metadatas) async {
     if (metadatas.isEmpty) return;
     final db = await database;
@@ -136,24 +133,6 @@ class DatabaseService {
       );
     }
     await batch.commit(noResult: true);
-  }
-
-  /// 모든 이미지 정보를 가져옵니다. (주로 디버깅 또는 전체 데이터 필요시 사용)
-  Future<List<ImageMetadata>> getAllImages() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(imagesTable, orderBy: 'timestamp DESC');
-    return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
-  }
-
-  /// 특정 폴더 경로에 속한 이미지들을 가져옵니다.
-  Future<List<ImageMetadata>> getImagesByPath(String folderPath) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-        imagesTable,
-        where: 'path LIKE ?',
-        whereArgs: ['$folderPath%']
-    );
-    return List.generate(maps.length, (i) => ImageMetadata.fromMap(maps[i]));
   }
 
   /// 특정 경로의 이미지 정보를 DB에서 삭제합니다.
@@ -201,19 +180,6 @@ class DatabaseService {
     await db.rawUpdate('UPDATE $imagesTable SET view_count = view_count + 1 WHERE path = ?', [path]);
   }
 
-  /// 이미지 파일 경로가 변경되었을 때 DB의 경로를 업데이트합니다. (현재 앱에서는 사용되지 않음)
-  Future<void> updateImagePath(String oldPath, String newPath) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(imagesTable, where: 'path = ?', whereArgs: [oldPath]);
-    if (maps.isNotEmpty) {
-      final oldData = Map<String, dynamic>.from(maps.first);
-      oldData['path'] = newPath;
-      await db.transaction((txn) async {
-        await txn.delete(imagesTable, where: 'path = ?', whereArgs: [oldPath]);
-        await txn.insert(imagesTable, oldData);
-      });
-    }
-  }
 
   // --- 프리셋 관련 CRUD 함수들 ---
 

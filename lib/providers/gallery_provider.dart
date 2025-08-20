@@ -2,7 +2,7 @@
 
 import 'dart:io';
 import 'dart:isolate';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'; // [해결] @immutable을 사용하기 위해 import 추가
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prompt_viewer/main.dart';
 import 'package:prompt_viewer/models/image_metadata.dart';
@@ -68,12 +68,11 @@ final folderPathProvider = Provider<String?>((ref) {
 final sharingServiceProvider = Provider<SharingService>((ref) => SharingService());
 final imageCacheProvider = ChangeNotifierProvider((ref) => ImageCacheService(maxSize: 150));
 
-/// [최종] 비동기 초기화와 상태 관리를 통합한 AsyncNotifierProvider
 final galleryProvider = AsyncNotifierProvider<GalleryNotifier, GalleryState>(() {
   return GalleryNotifier();
 });
 
-/// [최종] Gallery State Notifier
+
 class GalleryNotifier extends AsyncNotifier<GalleryState> {
   Isolate? _managerIsolate;
   ReceivePort? _mainReceivePort;
@@ -82,28 +81,30 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
   final List<ImageMetadata> _metadataBatch = [];
   static const _batchSize = 50;
 
-  /// Provider가 처음 생성될 때 비동기 초기화를 수행합니다.
   @override
   Future<GalleryState> build() async {
+    ref.onDispose(() {
+      _cleanupIsolate();
+    });
+
     final folderPath = ref.watch(folderPathProvider);
     if (folderPath == null) {
-      // 선택된 폴더가 없으면 빈 상태로 즉시 완료.
       return const GalleryState();
     }
-    // 선택된 폴더가 있으면 DB에서 첫 페이지를 로드하여 초기 상태를 구성합니다.
-    return await _initialLoad();
+
+    final initialState = await _initialLoad();
+
+    _loadAllImagesInBackground();
+
+    return initialState;
   }
 
-  /// DB에서 첫 페이지 데이터를 가져와 초기 상태를 생성하는 헬퍼 함수
   Future<GalleryState> _initialLoad() async {
     final dbService = ref.read(databaseServiceProvider);
     final initialMetadata = await dbService.getImagesPaginated(_pageSize, 0);
     final initialItems = initialMetadata.map((meta) => FullImageItem(meta)).toList();
 
-    _itemIndexMap.clear();
-    for (int i = 0; i < initialItems.length; i++) {
-      _itemIndexMap[initialItems[i].path] = i;
-    }
+    _rebuildIndexMap(initialItems);
 
     return GalleryState(
       items: initialItems,
@@ -111,13 +112,25 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
     );
   }
 
-  /// 스크롤을 내렸을 때 다음 페이지 이미지를 로드합니다.
+  Future<void> _loadAllImagesInBackground() async {
+    final dbService = ref.read(databaseServiceProvider);
+    final allMetadata = await dbService.getAllImages();
+    final allItems = allMetadata.map((meta) => FullImageItem(meta)).toList();
+
+    _rebuildIndexMap(allItems);
+
+    if (state.hasValue) {
+      state = AsyncData(state.value!.copyWith(
+        items: allItems,
+        hasMore: false,
+      ));
+    }
+  }
+
   Future<void> loadMoreImages() async {
-    // state.value는 현재 로드된 GalleryState 데이터입니다.
     final currentState = state.value;
     if (currentState == null || currentState.isLoadingMore || !currentState.hasMore) return;
 
-    // 로딩 시작 상태로 업데이트
     state = AsyncData(currentState.copyWith(isLoadingMore: true));
 
     final dbService = ref.read(databaseServiceProvider);
@@ -125,30 +138,25 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
     final newMetadata = await dbService.getImagesPaginated(_pageSize, currentOffset);
     final newItems = newMetadata.map((meta) => FullImageItem(meta)).toList();
 
-    final currentLength = currentState.items.length;
-    for (int i = 0; i < newItems.length; i++) {
-      _itemIndexMap[newItems[i].path] = currentLength + i;
-    }
+    final newCombinedItems = [...currentState.items, ...newItems];
+    _rebuildIndexMap(newCombinedItems);
 
-    // 로딩 완료 및 데이터 추가 상태로 업데이트
     state = AsyncData(currentState.copyWith(
-      items: [...currentState.items, ...newItems],
+      items: newCombinedItems,
       isLoadingMore: false,
       hasMore: newItems.length == _pageSize,
     ));
   }
 
-  /// 폴더 동기화를 시작합니다. (멀티코어 워커 풀 사용)
   Future<void> syncFolder(String folderPath) async {
-    final currentState = state.value;
-    if (currentState == null || currentState.isSyncing) return;
+    if (state.value?.isSyncing == true) return;
 
     _metadataBatch.clear();
     ref.read(imageCacheProvider).clear();
     ref.read(configProvider.notifier).setLastSyncedFolderPath(folderPath);
 
-    // 동기화 시작 상태로 UI 즉시 업데이트
-    state = AsyncData(currentState.copyWith(isSyncing: true));
+    final initialState = state.value ?? const GalleryState();
+    state = AsyncData(initialState.copyWith(isSyncing: true));
 
     final dbService = ref.read(databaseServiceProvider);
     final existingFiles = await dbService.getAllImagePathsAndTimestamps();
@@ -170,23 +178,23 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
       int parsedCount = 0;
       await notificationService.showProgressNotification(1, 0, "파일 목록을 스캔하는 중...");
 
-      _mainReceivePort!.listen((message) {
-        // listen 콜백 안에서는 항상 최신 상태를 다시 읽어와야 합니다.
-        final currentListenState = state.value;
-        if (currentListenState == null) return;
+      _mainReceivePort!.listen((message) async {
+        if (!state.hasValue) {
+          _cleanupIsolate();
+          return;
+        }
+        final currentListenState = state.value!;
 
         if (message is FileFoundMessage) {
           totalFound = message.paths.length;
           final currentItems = List<GalleryItem>.from(currentListenState.items);
           final foundPathsSet = message.paths.toSet();
 
-          // 삭제된 파일 처리
           final deletedPaths = currentListenState.items
               .where((item) => !foundPathsSet.contains(item.path))
               .map((item) => item.path)
               .toList();
           if (deletedPaths.isNotEmpty) {
-            // DB에서 삭제하는 작업은 비동기로 처리 (UI를 막지 않음)
             Future(() async {
               for (final path in deletedPaths) {
                 await dbService.deleteImage(path);
@@ -195,18 +203,13 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
           }
           currentItems.removeWhere((item) => deletedPaths.contains(item.path));
 
-          // 새로 추가된 파일 처리
           final existingPaths = _itemIndexMap.keys.toSet();
           final newPaths = message.paths.where((p) => !existingPaths.contains(p));
           for (final path in newPaths) {
             currentItems.add(TemporaryImageItem(path));
           }
 
-          _itemIndexMap.clear();
-          for (int i = 0; i < currentItems.length; i++) {
-            _itemIndexMap[currentItems[i].path] = i;
-          }
-
+          _rebuildIndexMap(currentItems);
           state = AsyncData(currentListenState.copyWith(items: currentItems));
           notificationService.showProgressNotification(totalFound, parsedCount, "$parsedCount / $totalFound 개 처리 중...");
         }
@@ -236,14 +239,17 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
           state = AsyncData(currentListenState.copyWith(items: newItems));
 
           if (_metadataBatch.length >= _batchSize) {
-            _flushMetadataBatch();
+            await _flushMetadataBatch();
           }
 
           notificationService.showProgressNotification(totalFound, parsedCount, "$parsedCount / $totalFound 개 처리 중...");
         }
         else if (message is SyncCompleteMessage) {
-          _flushMetadataBatch();
-          state = AsyncData(currentListenState.copyWith(isSyncing: false));
+          await _flushMetadataBatch();
+          await _loadAllImagesInBackground();
+          if (state.hasValue) {
+            state = AsyncData(state.value!.copyWith(isSyncing: false));
+          }
 
           notificationService.showCompletionNotification("${message.totalCount}개 이미지 동기화 완료!");
           _cleanupIsolate();
@@ -253,22 +259,21 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
           });
         }
         else if (message is SyncErrorMessage) {
-          debugPrint("Error from sync isolate: ${message.error}");
           notificationService.showCompletionNotification("오류 발생: ${message.error}");
-          state = AsyncData(currentListenState.copyWith(isSyncing: false));
+          if (state.hasValue) {
+            state = AsyncData(state.value!.copyWith(isSyncing: false));
+          }
           _cleanupIsolate();
         }
       });
     } catch (e) {
-      if (state.value != null) {
+      if (state.hasValue) {
         state = AsyncData(state.value!.copyWith(isSyncing: false));
       }
-      debugPrint("Error spawning isolate: $e");
+      print("Error spawning isolate: $e");
       _cleanupIsolate();
     }
   }
-
-  // --- 이하 사용자 인터랙션 및 헬퍼 함수들 ---
 
   Future<void> _flushMetadataBatch() async {
     if (_metadataBatch.isEmpty) return;
@@ -279,10 +284,9 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
 
   void _cleanupIsolate() {
     _mainReceivePort?.close();
-    if (_managerIsolate != null) {
-      _managerIsolate!.kill(priority: Isolate.immediate);
-      _managerIsolate = null;
-    }
+    _mainReceivePort = null;
+    _managerIsolate?.kill(priority: Isolate.immediate);
+    _managerIsolate = null;
   }
 
   Future<void> toggleFavorite(ImageMetadata image) async {
@@ -344,7 +348,6 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
   Future<void> viewImage(String path) async {
     final dbService = ref.read(databaseServiceProvider);
     await dbService.incrementImageViewCount(path);
-    // 조회수는 UI에 직접적인 영향을 주지 않으므로 상태 업데이트 생략
   }
 
   Future<bool> deleteImage(ImageMetadata image) async {
@@ -369,7 +372,7 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
       state = AsyncData(currentState.copyWith(items: newItems));
       return true;
     } catch (e) {
-      debugPrint("Error deleting file: $e");
+      print("Error deleting file: $e");
       return false;
     }
   }
