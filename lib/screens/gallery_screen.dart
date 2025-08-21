@@ -41,18 +41,21 @@ class _GalleryScreenContent extends ConsumerStatefulWidget {
 
 class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
   String? _selectedFolder;
-  // [수정] 페이지네이션을 사용하지 않으므로 ScrollController 제거
-  // final _scrollController = ScrollController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    // [수정] ScrollController 리스너 제거
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300) {
+        ref.read(galleryProvider.notifier).loadMoreImages();
+      }
+    });
   }
 
   @override
   void dispose() {
-    // [수정] ScrollController dispose 제거
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -82,7 +85,7 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
     final itemsToDisplay = galleryState.items.where((item) {
       if (showNsfw) return true;
       if (item is FullImageItem) return !item.metadata.isNsfw;
-      return true; // TemporaryItem은 일단 보여줌
+      return true;
     }).toList();
 
     if (itemsToDisplay.isEmpty && !galleryState.isSyncing) {
@@ -106,24 +109,22 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
 
   Widget _buildGalleryView(List<GalleryItem> galleryItems, GalleryState galleryState) {
     final folderPaths = galleryItems.whereType<FullImageItem>().map((item) => p.dirname(item.metadata.path)).toSet().toList();
-    final filteredItems = _selectedFolder == null ? galleryItems : galleryItems.where((item) {
-      if (item is FullImageItem) {
-        return p.dirname(item.metadata.path) == _selectedFolder;
-      }
-      return false; // TemporaryItem은 폴더 정보가 없으므로 필터링 시 제외
-    }).toList();
+    final filteredItems = _selectedFolder == null ? galleryItems : galleryItems.where((item) => p.dirname(item.path) == _selectedFolder).toList();
 
     return Column(
       children: [
         _buildFolderTabsAndCount(folderPaths, filteredItems.length),
         Expanded(
           child: GridView.builder(
-            // [수정] ScrollController 제거
+            controller: _scrollController,
             padding: const EdgeInsets.all(16.0),
-            // [수정] itemCount를 간단하게 변경
-            itemCount: filteredItems.length,
+            itemCount: filteredItems.length + (galleryState.hasMore ? 1 : 0),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12.0, mainAxisSpacing: 12.0),
             itemBuilder: (context, index) {
+              if (index >= filteredItems.length) {
+                return galleryState.isLoadingMore ? const Center(child: CircularProgressIndicator()) : const SizedBox.shrink();
+              }
+
               final item = filteredItems[index];
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
@@ -138,49 +139,59 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
 
   Widget _buildGalleryItem(BuildContext context, GalleryItem item, List<GalleryItem> allItems) {
     if (item is FullImageItem) {
-      // image_cache_service를 사용하지 않고 직접 Image.file을 사용하여 OS 캐싱에 의존
-      return InkWell(
-        onTap: () => _navigateToFullScreen(context, item.path, allItems),
-        onLongPress: () => _showContextMenu(context, ref, item.metadata),
-        child: Hero(
-          tag: item.path,
-          child: Image.file(
-            File(item.metadata.thumbnailPath),
-            fit: BoxFit.cover,
-            gaplessPlayback: true, // 이미지 로딩 중 깜빡임 방지
-            errorBuilder: (context, error, stackTrace) {
-              // 썸네일 로딩 실패 시 아이콘 표시
-              return Container(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.grey)),
-              );
-            },
+      final imageCache = ref.watch(imageCacheProvider);
+      final cachedImage = imageCache.getImage(item.metadata.thumbnailPath);
+
+      if (cachedImage != null) {
+        return InkWell(
+          onTap: () => _navigateToFullScreen(context, item.path, allItems),
+          onLongPress: () => _showContextMenu(context, ref, item.metadata),
+          child: Hero(
+            tag: item.path,
+            child: Image.memory(cachedImage, fit: BoxFit.cover, gaplessPlayback: true),
           ),
-        ),
+        );
+      }
+
+      return FutureBuilder(
+        future: imageCache.loadImage(item.metadata.thumbnailPath),
+        builder: (context, snapshot) {
+          final reloadedImage = imageCache.getImage(item.metadata.thumbnailPath);
+          if (reloadedImage != null) {
+            return InkWell(
+              onTap: () => _navigateToFullScreen(context, item.path, allItems),
+              onLongPress: () => _showContextMenu(context, ref, item.metadata),
+              child: Hero(
+                tag: item.path,
+                child: Image.memory(reloadedImage, fit: BoxFit.cover, gaplessPlayback: true),
+              ),
+            );
+          }
+          return Container(color: Theme.of(context).colorScheme.surfaceVariant);
+        },
       );
     }
 
-    // TemporaryImageItem의 경우 로딩 인디케이터 표시
     return Container(
       color: Theme.of(context).colorScheme.surface,
       child: const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.0))),
     );
   }
 
-
   void _navigateToFullScreen(BuildContext context, String currentPath, List<GalleryItem> allItems) {
-    // FullScreenViewer에는 FullImageItem의 경로만 전달
-    final imagePaths = allItems.whereType<FullImageItem>().map((e) => e.path).toList();
-    final initialIndex = imagePaths.indexOf(currentPath);
+    final allPaths = allItems.map((e) => e.path).toList();
+    final initialIndex = allPaths.indexOf(currentPath);
     if (initialIndex == -1) return;
 
     Navigator.push(context, MaterialPageRoute(
       builder: (context) => FullScreenViewer(
-        imagePaths: imagePaths,
+        imagePaths: allPaths,
         initialIndex: initialIndex,
         onPageChanged: (viewedIndex) {
-          final viewedPath = imagePaths[viewedIndex];
-          ref.read(galleryProvider.notifier).viewImage(viewedPath);
+          final viewedItem = allItems[viewedIndex];
+          if(viewedItem is FullImageItem) {
+            ref.read(galleryProvider.notifier).viewImage(viewedItem.path);
+          }
         },
       ),
     ),
