@@ -1,12 +1,13 @@
 // lib/screens/save_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:prompt_viewer/screens/memos_screen.dart';
 import 'package:prompt_viewer/screens/preset_list_screen.dart';
 import 'package:prompt_viewer/screens/tag_library_screen.dart';
 import 'package:prompt_viewer/screens/saved_prompts_screen.dart';
 
-// 저장 화면의 세 가지 탭을 명확하게 정의하기 위한 enum
-enum SaveTab { presets, tags, prompts }
+// [수정] '메모' 탭을 추가
+enum SaveTab { presets, tags, prompts, memos }
 
 class SaveScreen extends StatefulWidget {
   const SaveScreen({super.key});
@@ -35,6 +36,8 @@ class _SaveScreenState extends State<SaveScreen> {
             SaveTab.tags => const TagLibraryScreen(showAppBar: false),
           // '저장된 프롬프트' 탭이 선택된 경우
             SaveTab.prompts => const SavedPromptsScreen(),
+          // [추가] '메모' 탭 선택 시 MemosScreen 표시
+            SaveTab.memos => const MemosScreen(),
           },
         ),
       ],
@@ -59,6 +62,8 @@ class _SaveScreenState extends State<SaveScreen> {
           _buildTabItem('프리셋', SaveTab.presets),
           _buildTabItem('태그 라이브러리', SaveTab.tags),
           _buildTabItem('저장된 프롬프트', SaveTab.prompts),
+          // [추가] '메모' 탭 아이템
+          _buildTabItem('메모', SaveTab.memos),
         ],
       ),
     );

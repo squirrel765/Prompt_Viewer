@@ -1,23 +1,24 @@
 // lib/screens/app_drawer.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:prompt_viewer/providers/gallery_provider.dart';
 import 'package:prompt_viewer/screens/help_screen.dart';
+import 'package:prompt_viewer/screens/metadata_embedding_screen.dart';
 import 'package:prompt_viewer/screens/preset_list_screen.dart';
 import 'package:prompt_viewer/screens/settings_screen.dart';
 import 'package:prompt_viewer/screens/tag_library_screen.dart';
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends ConsumerWidget {
   const AppDrawer({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // [핵심] 현재 테마 정보를 가져옵니다.
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final drawerWidth = MediaQuery.of(context).size.width * 0.83;
 
     return Drawer(
       width: drawerWidth,
-      // [수정] Drawer의 배경색을 현재 테마의 Scaffold 배경색과 일치시킵니다.
       backgroundColor: theme.scaffoldBackgroundColor,
       child: ListView(
         padding: EdgeInsets.zero,
@@ -25,7 +26,6 @@ class AppDrawer extends StatelessWidget {
           SizedBox(
             height: 120,
             child: DrawerHeader(
-              // [수정] 헤더의 배경색도 테마를 따르도록 명시합니다.
               decoration: BoxDecoration(
                 color: theme.scaffoldBackgroundColor,
               ),
@@ -34,7 +34,6 @@ class AppDrawer extends StatelessWidget {
                 child: Text(
                   'Prompt Viewer',
                   style: TextStyle(
-                    // [수정] 헤더의 글자색이 테마의 기본 글자색을 따르도록 합니다.
                     color: theme.textTheme.titleLarge?.color,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -43,7 +42,6 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
           ),
-          // --- 각 메뉴 아이템 ---
           _buildDrawerItem(
             context,
             icon: Icons.auto_awesome_outlined,
@@ -79,6 +77,45 @@ class AppDrawer extends StatelessWidget {
               Navigator.pop(context);
             },
           ),
+          const Divider(),
+          _buildDrawerItem(
+            context,
+            icon: Icons.input,
+            title: '외부에서 가져오기 (Import)',
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final pathsToEdit = await ref.read(galleryProvider.notifier).importAndProcessImages();
+
+                if (pathsToEdit.isNotEmpty && context.mounted) {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text('${pathsToEdit.length}개의 이미지에 프롬프트 정보가 없습니다.'),
+                      content: const Text("지금 추가하시겠습니까?"),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("나중에 하기")),
+                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("추가하기")),
+                      ],
+                    ),
+                  ) ?? false;
+
+                  if (confirm && context.mounted) {
+                    for (final path in pathsToEdit) {
+                      if (!context.mounted) break;
+                      await Navigator.push(context, MaterialPageRoute(builder: (context) => MetadataEmbeddingScreen(imagePath: path)));
+                    }
+                  }
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll("Exception: ", ""))));
+                }
+              }
+            },
+          ),
+          // [수정] 이미지 내보내기 메뉴 삭제
+          const Divider(),
           _buildDrawerItem(
             context,
             icon: Icons.help_outline,
@@ -108,15 +145,13 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
-  /// 공통 드로어 아이템 위젯을 생성하는 헬퍼 메서드
   Widget _buildDrawerItem(BuildContext context, {required IconData icon, required String title, required VoidCallback onTap}) {
     final theme = Theme.of(context);
-    const bool isSelected = false; // 현재 화면에 따라 선택 상태를 표시하는 로직 추가 가능
+    const bool isSelected = false;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
       child: ListTile(
-        // [수정] 아이콘 색상을 테마의 onSurfaceVariant 색상으로 지정하여 일관성을 유지합니다.
         leading: Icon(icon, color: theme.colorScheme.onSurfaceVariant),
         title: Text(
           title,
@@ -124,13 +159,11 @@ class AppDrawer extends StatelessWidget {
             fontWeight: FontWeight.bold,
             fontSize: 16,
           ),
-          // Text의 color를 지정하지 않으면 ListTile이 테마에 맞는 기본 글자색을 자동으로 적용합니다.
         ),
         onTap: onTap,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.0),
         ),
-        // [수정] 선택되었을 때의 배경색을 테마의 primaryContainer 색상으로 지정합니다.
         tileColor: isSelected ? theme.colorScheme.primaryContainer : Colors.transparent,
       ),
     );

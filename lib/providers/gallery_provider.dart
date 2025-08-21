@@ -2,7 +2,7 @@
 
 import 'dart:io';
 import 'dart:isolate';
-import 'package:flutter/foundation.dart'; // [해결] @immutable을 사용하기 위해 import 추가
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prompt_viewer/main.dart';
 import 'package:prompt_viewer/models/image_metadata.dart';
@@ -12,7 +12,10 @@ import 'package:prompt_viewer/services/database_service.dart';
 import 'package:prompt_viewer/services/sharing_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:prompt_viewer/services/metadata_parser_service.dart';
 import 'package:prompt_viewer/services/image_cache_service.dart';
+import 'package:prompt_viewer/services/worker_isolate.dart';
 
 // --- 데이터 모델 ---
 
@@ -92,20 +95,15 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
       return const GalleryState();
     }
 
-    final initialState = await _initialLoad();
-
-    _loadAllImagesInBackground();
-
-    return initialState;
+    // [핵심 수정] 다시 페이지네이션을 사용한 초기 로드로 변경하여 시작 속도 확보
+    return await _initialLoad();
   }
 
   Future<GalleryState> _initialLoad() async {
     final dbService = ref.read(databaseServiceProvider);
     final initialMetadata = await dbService.getImagesPaginated(_pageSize, 0);
     final initialItems = initialMetadata.map((meta) => FullImageItem(meta)).toList();
-
     _rebuildIndexMap(initialItems);
-
     return GalleryState(
       items: initialItems,
       hasMore: initialItems.length == _pageSize,
@@ -116,9 +114,7 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
     final dbService = ref.read(databaseServiceProvider);
     final allMetadata = await dbService.getAllImages();
     final allItems = allMetadata.map((meta) => FullImageItem(meta)).toList();
-
     _rebuildIndexMap(allItems);
-
     if (state.hasValue) {
       state = AsyncData(state.value!.copyWith(
         items: allItems,
@@ -152,12 +148,12 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
     if (state.value?.isSyncing == true) return;
 
     _metadataBatch.clear();
-    ref.read(imageCacheProvider).clear();
     ref.read(configProvider.notifier).setLastSyncedFolderPath(folderPath);
 
     final initialState = state.value ?? const GalleryState();
     state = AsyncData(initialState.copyWith(isSyncing: true));
 
+    // [핵심 수정] 전체 메타데이터 대신, 경로와 타임스탬프만 가져오는 가벼운 쿼리 사용
     final dbService = ref.read(databaseServiceProvider);
     final existingFiles = await dbService.getAllImagePathsAndTimestamps();
 
@@ -187,69 +183,54 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
 
         if (message is FileFoundMessage) {
           totalFound = message.paths.length;
-          final currentItems = List<GalleryItem>.from(currentListenState.items);
+          // [수정] FileFound 시에는 DB에서 삭제된 파일만 처리하고 UI는 바로 변경하지 않음.
+          // 파싱 결과를 받을 때마다 UI를 업데이트하여 부드러운 경험 제공
           final foundPathsSet = message.paths.toSet();
+          final db = ref.read(databaseServiceProvider);
+          final allDbPaths = (await db.getAllImagePathsAndTimestamps()).keys.toSet();
+          final deletedPaths = allDbPaths.difference(foundPathsSet);
 
-          final deletedPaths = currentListenState.items
-              .where((item) => !foundPathsSet.contains(item.path))
-              .map((item) => item.path)
-              .toList();
           if (deletedPaths.isNotEmpty) {
-            Future(() async {
-              for (final path in deletedPaths) {
-                await dbService.deleteImage(path);
-              }
-            });
+            var newItems = List<GalleryItem>.from(currentListenState.items);
+            newItems.removeWhere((item) => deletedPaths.contains(item.path));
+            for (final path in deletedPaths) {
+              await db.deleteImage(path);
+            }
+            state = AsyncData(currentListenState.copyWith(items: newItems));
+            _rebuildIndexMap(newItems);
           }
-          currentItems.removeWhere((item) => deletedPaths.contains(item.path));
-
-          final existingPaths = _itemIndexMap.keys.toSet();
-          final newPaths = message.paths.where((p) => !existingPaths.contains(p));
-          for (final path in newPaths) {
-            currentItems.add(TemporaryImageItem(path));
-          }
-
-          _rebuildIndexMap(currentItems);
-          state = AsyncData(currentListenState.copyWith(items: currentItems));
-          notificationService.showProgressNotification(totalFound, parsedCount, "$parsedCount / $totalFound 개 처리 중...");
         }
         else if (message is ParsingResultMessage) {
           parsedCount++;
           final result = message.result;
+          final newMetadata = ImageMetadata.fromMap(result.toMap());
+          _metadataBatch.add(newMetadata);
+
+          // UI에 새 아이템 추가 또는 기존 아이템 업데이트
+          var newItems = List<GalleryItem>.from(currentListenState.items);
           final index = _itemIndexMap[result.path];
-          if (index == null || index >= currentListenState.items.length) return;
+          if (index != null) { // 기존 아이템 업데이트
+            newItems[index] = FullImageItem(newMetadata);
+          } else { // 새 아이템 추가
+            newItems.insert(0, FullImageItem(newMetadata));
+          }
 
-          final currentItem = currentListenState.items[index];
-          ImageMetadata existingMetadata = (currentItem is FullImageItem)
-              ? currentItem.metadata
-              : ImageMetadata(path: result.path, thumbnailPath: result.thumbnailPath, timestamp: result.timestamp);
-
-          final finalMetadata = existingMetadata.copyWith(
-            thumbnailPath: result.thumbnailPath,
-            timestamp: result.timestamp,
-            a1111Parameters: result.a1111Parameters,
-            comfyUIWorkflow: result.comfyUIWorkflow,
-            naiComment: result.naiComment,
-          );
-
-          _metadataBatch.add(finalMetadata);
-
-          final newItems = List<GalleryItem>.from(currentListenState.items);
-          newItems[index] = FullImageItem(finalMetadata);
+          _rebuildIndexMap(newItems);
           state = AsyncData(currentListenState.copyWith(items: newItems));
 
           if (_metadataBatch.length >= _batchSize) {
             await _flushMetadataBatch();
           }
-
           notificationService.showProgressNotification(totalFound, parsedCount, "$parsedCount / $totalFound 개 처리 중...");
         }
         else if (message is SyncCompleteMessage) {
           await _flushMetadataBatch();
-          await _loadAllImagesInBackground();
+          // [수정] 동기화 완료 후에는 이미 UI가 최신 상태이므로, isSyncing 상태만 false로 변경
           if (state.hasValue) {
             state = AsyncData(state.value!.copyWith(isSyncing: false));
           }
+          // 전체 목록을 다시 로드하여 최종 정렬을 맞춤
+          _loadAllImagesInBackground();
 
           notificationService.showCompletionNotification("${message.totalCount}개 이미지 동기화 완료!");
           _cleanupIsolate();
@@ -270,7 +251,7 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
       if (state.hasValue) {
         state = AsyncData(state.value!.copyWith(isSyncing: false));
       }
-      print("Error spawning isolate: $e");
+      debugPrint("Error spawning isolate: $e");
       _cleanupIsolate();
     }
   }
@@ -372,7 +353,7 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
       state = AsyncData(currentState.copyWith(items: newItems));
       return true;
     } catch (e) {
-      print("Error deleting file: $e");
+      debugPrint("Error deleting file: $e");
       return false;
     }
   }
@@ -382,5 +363,39 @@ class GalleryNotifier extends AsyncNotifier<GalleryState> {
     for(int i = 0; i < items.length; i++) {
       _itemIndexMap[items[i].path] = i;
     }
+  }
+
+  Future<List<String>> importAndProcessImages() async {
+    final rootFolder = ref.read(folderPathProvider);
+    if (rootFolder == null || rootFolder.isEmpty) {
+      throw Exception("먼저 이미지를 저장할 갤러리 폴더를 선택해주세요.");
+    }
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+    );
+
+    final List<String> needsMetadataPaths = [];
+
+    if (result != null && result.files.isNotEmpty) {
+      for (final file in result.files) {
+        if (file.path == null) continue;
+
+        final sourceFile = File(file.path!);
+        final newPath = p.join(rootFolder, p.basename(sourceFile.path));
+        await sourceFile.copy(newPath);
+
+        final parser = ref.read(metadataParserProvider);
+        final metadata = await parser.extractRawMetadata(newPath);
+
+        if (metadata['a1111_parameters'] == null || metadata['a1111_parameters']!.isEmpty) {
+          needsMetadataPaths.add(newPath);
+        }
+      }
+      await syncFolder(rootFolder);
+    }
+
+    return needsMetadataPaths;
   }
 }

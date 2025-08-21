@@ -26,8 +26,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   void initState() {
     super.initState();
     _pageController = PageController();
-    // [핵심 수정] AsyncNotifierProvider는 스스로 초기화를 관리하므로
-    // initState에서 수동으로 로드하는 로직은 이제 필요 없습니다. 모두 제거합니다.
   }
 
   @override
@@ -72,7 +70,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final appBarTheme = theme.appBarTheme;
-    // [핵심 수정] galleryProvider는 이제 AsyncValue를 반환합니다.
     final galleryAsyncValue = ref.watch(galleryProvider);
 
     return Scaffold(
@@ -90,8 +87,6 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         ),
         actions: [
           if (_selectedIndex == 0) ...[
-            // [핵심 수정] AsyncValue에서 isSyncing 상태를 안전하게 가져와 로딩 아이콘을 표시합니다.
-            // valueOrNull은 데이터가 있을 때만 GalleryState를 반환하고, 아니면 null을 반환합니다.
             if (galleryAsyncValue.valueOrNull?.isSyncing == true)
               const Padding(
                 padding: EdgeInsets.only(right: 16.0),
@@ -124,6 +119,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
             ),
         ],
       ),
+      //
       drawer: const AppDrawer(),
       body: PageView(
         controller: _pageController,

@@ -27,6 +27,25 @@ class PresetNotifier extends StateNotifier<List<PromptPreset>> {
     await _dbService.deletePreset(id);
     await loadPresets();
   }
+
+  /// [추가] 프리셋에서 특정 이미지를 제거합니다.
+  Future<void> removeImageFromPreset(String presetId, String imagePath) async {
+    final presetIndex = state.indexWhere((p) => p.id == presetId);
+    if (presetIndex == -1) return;
+
+    final preset = state[presetIndex];
+    // 이미지 목록이 2개 이상일 때만 제거 가능
+    if (preset.imagePaths.length > 1) {
+      preset.imagePaths.remove(imagePath);
+
+      // 만약 대표 이미지가 삭제되었다면, 목록의 첫 번째 이미지를 새 대표 이미지로 지정
+      if (preset.thumbnailPath == imagePath) {
+        preset.thumbnailPath = preset.imagePaths.first;
+      }
+
+      await addOrUpdatePreset(preset);
+    }
+  }
 }
 
 // --- Custom Tags State Notifier (구조 변경) ---

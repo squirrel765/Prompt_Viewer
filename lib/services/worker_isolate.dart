@@ -38,6 +38,25 @@ class WorkerResult {
     this.comfyUIWorkflow,
     this.naiComment,
   });
+
+  // --- START: 핵심 수정 부분 ---
+  /// [추가] ImageMetadata.fromMap과 호환되도록 Map 형태로 변환하는 메소드
+  Map<String, dynamic> toMap() {
+    return {
+      'path': path,
+      'thumbnailPath': thumbnailPath,
+      'timestamp': timestamp,
+      'a1111_parameters': a1111Parameters,
+      'comfyui_workflow': comfyUIWorkflow,
+      'nai_comment': naiComment,
+      // ImageMetadata.fromMap이 요구하는 기본값들을 채워줌
+      'is_favorite': 0,
+      'rating': 0.0,
+      'view_count': 0,
+      'is_nsfw': 0,
+    };
+  }
+// --- END: 핵심 수정 부분 ---
 }
 
 /// 개별 작업자 Isolate가 실행할 최상위 함수

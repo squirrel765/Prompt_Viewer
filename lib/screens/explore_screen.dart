@@ -51,7 +51,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     showModalBottomSheet(context: context, builder: (ctx) => Wrap(children: <Widget>[
       ListTile(leading: const Icon(Icons.info_outline), title: const Text('자세히 보기 (프롬프트)'),
         onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(metadata: image))); },
-      ), const Divider(),
+      ),
+      // [추가] 공유 기능
+      ListTile(
+        leading: const Icon(Icons.share_outlined),
+        title: const Text('이미지 공유'),
+        onTap: () async {
+          Navigator.pop(ctx);
+          final withMetadata = ref.read(configProvider).shareWithMetadata;
+          await ref.read(sharingServiceProvider).shareImageFile(image.path, withMetadata: withMetadata);
+        },
+      ),
+      const Divider(),
       ListTile(leading: Icon(image.isFavorite ? Icons.star : Icons.star_border), title: Text(image.isFavorite ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'),
         onTap: () { ref.read(galleryProvider.notifier).toggleFavorite(image); Navigator.pop(ctx); },
       ),
@@ -63,7 +74,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       ),
       ListTile(leading: Icon(image.isNsfw ? Icons.visibility_off_outlined : Icons.visibility_outlined), title: Text(image.isNsfw ? 'NSFW 해제' : 'NSFW로 표시'),
         onTap: () { ref.read(galleryProvider.notifier).toggleNsfw(image); Navigator.pop(ctx); },
-      ), const Divider(),
+      ),
+      const Divider(),
       ListTile(leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), title: Text('삭제', style: TextStyle(color: Theme.of(context).colorScheme.error)),
         onTap: () { Navigator.pop(ctx); ref.read(galleryProvider.notifier).deleteImage(image); },
       ),
@@ -92,7 +104,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final showNsfw = ref.watch(configProvider).showNsfw;
     final presetsToDisplay = showNsfw ? allPresets : allPresets.where((p) => !p.isNsfw).toList();
 
-    // [핵심 수정] galleryProvider의 AsyncValue를 watch 합니다.
     final galleryAsyncValue = ref.watch(galleryProvider);
 
     return Column(
@@ -100,12 +111,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         _buildSearchBar(),
         _buildFilterChips(),
         Expanded(
-          // [핵심 수정] .when을 사용하여 AsyncValue의 상태에 따라 UI를 분기합니다.
           child: galleryAsyncValue.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, stack) => Center(child: Text('이미지를 불러올 수 없습니다: $err')),
             data: (galleryState) {
-              // data 상태일 때만 galleryState.items에 안전하게 접근할 수 있습니다.
               final allImages = galleryState.items.whereType<FullImageItem>().map((item) => item.metadata).toList();
               final imagesToDisplay = showNsfw ? allImages : allImages.where((img) => !img.isNsfw).toList();
               final List<dynamic> results = _getResults(imagesToDisplay, presetsToDisplay);

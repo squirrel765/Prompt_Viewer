@@ -14,22 +14,17 @@ import 'package:path/path.dart' as p;
 import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
 
-/// [최종] galleryProvider의 비동기 상태를 처리하는 메인 위젯
+/// galleryProvider의 비동기 상태를 처리하는 메인 위젯
 class GalleryScreen extends ConsumerWidget {
   const GalleryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // AsyncNotifierProvider를 watch하면 AsyncValue 타입이 반환됩니다.
     final galleryAsyncValue = ref.watch(galleryProvider);
 
-    // AsyncValue의 상태에 따라 다른 UI를 보여줍니다 (when 사용).
     return galleryAsyncValue.when(
-      // 1. 데이터가 성공적으로 로드되었을 때
       data: (galleryState) => _GalleryScreenContent(galleryState: galleryState),
-      // 2. 데이터가 로딩 중일 때 (앱 시작 시 최초 한 번)
       loading: () => const Center(child: CircularProgressIndicator()),
-      // 3. 에러가 발생했을 때
       error: (err, stack) => Center(child: Text('갤러리를 불러오는 중 오류 발생:\n$err')),
     );
   }
@@ -46,22 +41,18 @@ class _GalleryScreenContent extends ConsumerStatefulWidget {
 
 class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
   String? _selectedFolder;
-  final _scrollController = ScrollController();
+  // [수정] 페이지네이션을 사용하지 않으므로 ScrollController 제거
+  // final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300) {
-        // .notifier를 통해 GalleryNotifier의 메서드를 호출
-        ref.read(galleryProvider.notifier).loadMoreImages();
-      }
-    });
+    // [수정] ScrollController 리스너 제거
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    // [수정] ScrollController dispose 제거
     super.dispose();
   }
 
@@ -91,15 +82,13 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
     final itemsToDisplay = galleryState.items.where((item) {
       if (showNsfw) return true;
       if (item is FullImageItem) return !item.metadata.isNsfw;
-      return true;
+      return true; // TemporaryItem은 일단 보여줌
     }).toList();
 
-    if (itemsToDisplay.isEmpty) {
-      // 데이터는 로드되었으나, 표시할 아이템이 없는 경우 (폴더가 비었거나, 선택 전)
+    if (itemsToDisplay.isEmpty && !galleryState.isSyncing) {
       return _buildInitialView();
     }
 
-    // 정상적으로 갤러리 UI를 표시
     return _buildGalleryView(itemsToDisplay, galleryState);
   }
 
@@ -109,7 +98,7 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
       const SizedBox(height: 24),
       const Text('이미지 폴더를 선택하세요', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
       const SizedBox(height: 8),
-      const Text('AI 생성 이미지가 포함된 폴더를 선택하여 갤러리를 시작하세요.', style: TextStyle(fontSize: 14, color: Colors.grey), textAlign: TextAlign.center),
+      const Text('AI 생성 이미지가 포함된 폴더를 선택하여 갤러리를 시작하세요.\n외부 이미지는 좌측 메뉴의 Import 기능을 이용해주세요.', style: TextStyle(fontSize: 14, color: Colors.grey), textAlign: TextAlign.center),
       const SizedBox(height: 24),
       ElevatedButton(onPressed: _pickFolder, child: const Text('폴더 선택하기')),
     ],),),);
@@ -117,22 +106,24 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
 
   Widget _buildGalleryView(List<GalleryItem> galleryItems, GalleryState galleryState) {
     final folderPaths = galleryItems.whereType<FullImageItem>().map((item) => p.dirname(item.metadata.path)).toSet().toList();
-    final filteredItems = _selectedFolder == null ? galleryItems : galleryItems.where((item) => p.dirname(item.path) == _selectedFolder).toList();
+    final filteredItems = _selectedFolder == null ? galleryItems : galleryItems.where((item) {
+      if (item is FullImageItem) {
+        return p.dirname(item.metadata.path) == _selectedFolder;
+      }
+      return false; // TemporaryItem은 폴더 정보가 없으므로 필터링 시 제외
+    }).toList();
 
     return Column(
       children: [
         _buildFolderTabsAndCount(folderPaths, filteredItems.length),
         Expanded(
           child: GridView.builder(
-            controller: _scrollController,
+            // [수정] ScrollController 제거
             padding: const EdgeInsets.all(16.0),
-            itemCount: filteredItems.length + (galleryState.hasMore ? 1 : 0),
+            // [수정] itemCount를 간단하게 변경
+            itemCount: filteredItems.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12.0, mainAxisSpacing: 12.0),
             itemBuilder: (context, index) {
-              if (index >= filteredItems.length) {
-                return galleryState.isLoadingMore ? const Center(child: CircularProgressIndicator()) : const SizedBox.shrink();
-              }
-
               final item = filteredItems[index];
               return ClipRRect(
                 borderRadius: BorderRadius.circular(12.0),
@@ -145,68 +136,51 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
     );
   }
 
-  /// [최종] In-Memory Cache를 사용하여 스크롤 성능을 극대화한 아이템 빌더
   Widget _buildGalleryItem(BuildContext context, GalleryItem item, List<GalleryItem> allItems) {
     if (item is FullImageItem) {
-      // 캐시 서비스의 상태가 변경되면 이 위젯도 다시 빌드되도록 watch
-      final imageCache = ref.watch(imageCacheProvider);
-      final cachedImage = imageCache.getImage(item.metadata.thumbnailPath);
-
-      // 1. 캐시에 이미지가 있으면 즉시 메모리에서 이미지를 빌드 (가장 빠름)
-      if (cachedImage != null) {
-        return InkWell(
-          onTap: () => _navigateToFullScreen(context, item.path, allItems),
-          onLongPress: () => _showContextMenu(context, ref, item.metadata),
-          child: Hero(
-            tag: item.path,
-            child: Image.memory(cachedImage, fit: BoxFit.cover, gaplessPlayback: true),
+      // image_cache_service를 사용하지 않고 직접 Image.file을 사용하여 OS 캐싱에 의존
+      return InkWell(
+        onTap: () => _navigateToFullScreen(context, item.path, allItems),
+        onLongPress: () => _showContextMenu(context, ref, item.metadata),
+        child: Hero(
+          tag: item.path,
+          child: Image.file(
+            File(item.metadata.thumbnailPath),
+            fit: BoxFit.cover,
+            gaplessPlayback: true, // 이미지 로딩 중 깜빡임 방지
+            errorBuilder: (context, error, stackTrace) {
+              // 썸네일 로딩 실패 시 아이콘 표시
+              return Container(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.grey)),
+              );
+            },
           ),
-        );
-      }
-
-      // 2. 캐시에 없으면 디스크에서 로드하고, 로드가 끝나면 캐시에 저장 후 FutureBuilder로 빌드
-      return FutureBuilder(
-        future: imageCache.loadImage(item.metadata.thumbnailPath),
-        builder: (context, snapshot) {
-          // Future가 완료된 후 다시 캐시에서 이미지를 가져옴
-          final reloadedImage = imageCache.getImage(item.metadata.thumbnailPath);
-          if (reloadedImage != null) {
-            return InkWell(
-              onTap: () => _navigateToFullScreen(context, item.path, allItems),
-              onLongPress: () => _showContextMenu(context, ref, item.metadata),
-              child: Hero(
-                tag: item.path,
-                child: Image.memory(reloadedImage, fit: BoxFit.cover, gaplessPlayback: true),
-              ),
-            );
-          }
-          // 로딩 중이거나 실패 시 플레이스홀더 표시
-          return Container(color: Theme.of(context).colorScheme.surfaceVariant);
-        },
+        ),
       );
     }
 
-    // 파싱 전 임시 아이템은 로딩 아이콘 표시
+    // TemporaryImageItem의 경우 로딩 인디케이터 표시
     return Container(
       color: Theme.of(context).colorScheme.surface,
       child: const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.0))),
     );
   }
 
+
   void _navigateToFullScreen(BuildContext context, String currentPath, List<GalleryItem> allItems) {
-    final allPaths = allItems.map((e) => e.path).toList();
-    final initialIndex = allPaths.indexOf(currentPath);
+    // FullScreenViewer에는 FullImageItem의 경로만 전달
+    final imagePaths = allItems.whereType<FullImageItem>().map((e) => e.path).toList();
+    final initialIndex = imagePaths.indexOf(currentPath);
     if (initialIndex == -1) return;
 
     Navigator.push(context, MaterialPageRoute(
       builder: (context) => FullScreenViewer(
-        imagePaths: allPaths,
+        imagePaths: imagePaths,
         initialIndex: initialIndex,
         onPageChanged: (viewedIndex) {
-          final viewedItem = allItems[viewedIndex];
-          if(viewedItem is FullImageItem) {
-            ref.read(galleryProvider.notifier).viewImage(viewedItem.path);
-          }
+          final viewedPath = imagePaths[viewedIndex];
+          ref.read(galleryProvider.notifier).viewImage(viewedPath);
         },
       ),
     ),
@@ -263,7 +237,17 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
     showModalBottomSheet(context: context, builder: (context) => Wrap(children: <Widget>[
       ListTile(leading: const Icon(Icons.info_outline), title: const Text('자세히 보기 (프롬프트)'),
         onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(metadata: image))); },
-      ), const Divider(),
+      ),
+      ListTile(
+        leading: const Icon(Icons.share_outlined),
+        title: const Text('이미지 공유'),
+        onTap: () async {
+          Navigator.pop(context);
+          final withMetadata = ref.read(configProvider).shareWithMetadata;
+          await ref.read(sharingServiceProvider).shareImageFile(image.path, withMetadata: withMetadata);
+        },
+      ),
+      const Divider(),
       ListTile(leading: Icon(image.isFavorite ? Icons.star : Icons.star_border), title: Text(image.isFavorite ? '즐겨찾기에서 제거' : '즐겨찾기에 추가'),
         onTap: () { ref.read(galleryProvider.notifier).toggleFavorite(image); Navigator.pop(context); },
       ),
@@ -275,7 +259,8 @@ class _GalleryScreenContentState extends ConsumerState<_GalleryScreenContent> {
       ),
       ListTile(leading: Icon(image.isNsfw ? Icons.visibility_off_outlined : Icons.visibility_outlined), title: Text(image.isNsfw ? 'NSFW 해제' : 'NSFW로 표시'),
         onTap: () { ref.read(galleryProvider.notifier).toggleNsfw(image); Navigator.pop(context); },
-      ), const Divider(),
+      ),
+      const Divider(),
       ListTile(leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), title: Text('삭제', style: TextStyle(color: Theme.of(context).colorScheme.error)),
         onTap: () { ref.read(galleryProvider.notifier).deleteImage(image); Navigator.pop(context); },
       ),

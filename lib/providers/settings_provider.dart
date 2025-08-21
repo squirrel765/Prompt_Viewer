@@ -14,7 +14,10 @@ class AppConfig {
   final bool showNsfw;
   final bool shareWithMetadata;
   final String? civitaiApiKey; // Civitai API 키
-  // [추가] 마지막으로 동기화한 폴더 경로를 저장할 변수
+  final String? geminiApiKey; // Gemini API 키
+  final String selectedGeminiModel; // 선택된 Gemini 모델
+  final int maxOutputTokens; // [추가] Gemini 최대 출력 토큰
+  final double temperature; // [추가] Gemini Temperature
   final String? lastSyncedFolderPath;
 
   AppConfig({
@@ -23,7 +26,11 @@ class AppConfig {
     required this.showNsfw,
     required this.shareWithMetadata,
     this.civitaiApiKey,
-    this.lastSyncedFolderPath, // [추가]
+    this.geminiApiKey,
+    required this.selectedGeminiModel,
+    required this.maxOutputTokens,
+    required this.temperature,
+    this.lastSyncedFolderPath,
   });
 
   /// 앱의 기본 설정을 정의합니다.
@@ -36,7 +43,11 @@ class AppConfig {
       showNsfw: true,
       shareWithMetadata: true,
       civitaiApiKey: null,
-      lastSyncedFolderPath: null, // [추가]
+      geminiApiKey: null,
+      selectedGeminiModel: 'gemini-1.5-flash', // 기본 모델
+      maxOutputTokens: 2048, // [추가] 기본값
+      temperature: 0.9, // [추가] 기본값
+      lastSyncedFolderPath: null,
     );
   }
 
@@ -47,7 +58,11 @@ class AppConfig {
     bool? showNsfw,
     bool? shareWithMetadata,
     String? civitaiApiKey,
-    String? lastSyncedFolderPath, // [추가]
+    String? geminiApiKey,
+    String? selectedGeminiModel,
+    int? maxOutputTokens,
+    double? temperature,
+    String? lastSyncedFolderPath,
   }) {
     return AppConfig(
       presets: presets ?? this.presets,
@@ -55,7 +70,11 @@ class AppConfig {
       showNsfw: showNsfw ?? this.showNsfw,
       shareWithMetadata: shareWithMetadata ?? this.shareWithMetadata,
       civitaiApiKey: civitaiApiKey ?? this.civitaiApiKey,
-      lastSyncedFolderPath: lastSyncedFolderPath ?? this.lastSyncedFolderPath, // [추가]
+      geminiApiKey: geminiApiKey ?? this.geminiApiKey,
+      selectedGeminiModel: selectedGeminiModel ?? this.selectedGeminiModel,
+      maxOutputTokens: maxOutputTokens ?? this.maxOutputTokens,
+      temperature: temperature ?? this.temperature,
+      lastSyncedFolderPath: lastSyncedFolderPath ?? this.lastSyncedFolderPath,
     );
   }
 
@@ -66,7 +85,11 @@ class AppConfig {
     'showNsfw': showNsfw,
     'shareWithMetadata': shareWithMetadata,
     'civitaiApiKey': civitaiApiKey,
-    'lastSyncedFolderPath': lastSyncedFolderPath, // [추가]
+    'geminiApiKey': geminiApiKey,
+    'selectedGeminiModel': selectedGeminiModel,
+    'maxOutputTokens': maxOutputTokens,
+    'temperature': temperature,
+    'lastSyncedFolderPath': lastSyncedFolderPath,
   };
 
   /// JSON 맵으로부터 AppConfig 객체를 생성합니다.
@@ -76,7 +99,11 @@ class AppConfig {
     showNsfw: json['showNsfw'] ?? true,
     shareWithMetadata: json['shareWithMetadata'] ?? true,
     civitaiApiKey: json['civitaiApiKey'],
-    lastSyncedFolderPath: json['lastSyncedFolderPath'], // [추가]
+    geminiApiKey: json['geminiApiKey'],
+    selectedGeminiModel: json['selectedGeminiModel'] ?? 'gemini-1.5-flash',
+    maxOutputTokens: json['maxOutputTokens'] ?? 2048,
+    temperature: json['temperature'] ?? 0.9,
+    lastSyncedFolderPath: json['lastSyncedFolderPath'],
   );
 }
 
@@ -121,7 +148,31 @@ class ConfigNotifier extends StateNotifier<AppConfig> {
     _saveConfig();
   }
 
-  // [추가] 마지막 동기화 폴더 경로를 변경하고 저장합니다.
+  /// Gemini API 키를 변경하고 저장합니다.
+  void setGeminiApiKey(String? key) {
+    state = state.copyWith(geminiApiKey: key);
+    _saveConfig();
+  }
+
+  /// Gemini 모델을 변경하고 저장합니다.
+  void setSelectedGeminiModel(String model) {
+    state = state.copyWith(selectedGeminiModel: model);
+    _saveConfig();
+  }
+
+  /// [추가] Gemini 최대 출력 토큰을 변경하고 저장합니다.
+  void setMaxOutputTokens(int tokens) {
+    state = state.copyWith(maxOutputTokens: tokens);
+    _saveConfig();
+  }
+
+  /// [추가] Gemini Temperature를 변경하고 저장합니다.
+  void setTemperature(double temp) {
+    state = state.copyWith(temperature: temp);
+    _saveConfig();
+  }
+
+  /// 마지막 동기화 폴더 경로를 변경하고 저장합니다.
   void setLastSyncedFolderPath(String path) {
     state = state.copyWith(lastSyncedFolderPath: path);
     _saveConfig();

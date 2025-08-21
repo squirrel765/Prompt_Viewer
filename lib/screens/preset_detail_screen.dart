@@ -4,8 +4,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:collection/collection.dart';
 import 'package:prompt_viewer/models/prompt_preset.dart';
+import 'package:prompt_viewer/providers/gallery_provider.dart';
 import 'package:prompt_viewer/providers/preset_provider.dart';
+import 'package:prompt_viewer/providers/settings_provider.dart';
+import 'package:prompt_viewer/screens/detail_screen.dart';
 import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
 
@@ -42,6 +46,56 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
     super.dispose();
   }
 
+  /// [신규] 이미지 롱클릭 시 컨텍스트 메뉴를 표시하는 함수
+  void _showImageContextMenu(BuildContext context, PromptPreset preset, String imagePath) {
+    final galleryState = ref.read(galleryProvider).value;
+    if (galleryState == null) return;
+
+    // [오류 수정] firstWhere 대신 firstWhereOrNull을 사용하여 null 안전성을 확보합니다.
+    final imageMetadata = galleryState.items
+        .whereType<FullImageItem>()
+        .firstWhereOrNull((item) => item.metadata.path == imagePath)
+        ?.metadata;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Wrap(children: [
+        ListTile(
+          leading: const Icon(Icons.share_outlined),
+          title: const Text('공유'),
+          onTap: () async {
+            Navigator.pop(ctx);
+            final withMetadata = ref.read(configProvider).shareWithMetadata;
+            await ref.read(sharingServiceProvider).shareImageFile(imagePath, withMetadata: withMetadata);
+          },
+        ),
+        if (imageMetadata != null)
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('자세히 보기 (프롬프트)'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.push(context, MaterialPageRoute(builder: (context) => DetailScreen(metadata: imageMetadata)));
+            },
+          ),
+        ListTile(
+          leading: Icon(Icons.remove_circle_outline, color: Theme.of(context).colorScheme.error),
+          title: Text('프리셋에서 제거', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          onTap: () {
+            Navigator.pop(ctx);
+            if (preset.imagePaths.length > 1) {
+              ref.read(presetProvider.notifier).removeImageFromPreset(preset.id, imagePath);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('프리셋에는 최소 1개의 이미지가 필요합니다.')),
+              );
+            }
+          },
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -50,16 +104,13 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
     final preset = presetList.firstWhere(
           (p) => p.id == widget.presetId,
       orElse: () {
-        // 프리셋이 삭제되었을 경우를 대비한 안전장치
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (context.mounted) Navigator.of(context).pop();
         });
-        // 임시 빈 프리셋 반환
         return PromptPreset(id: '', title: '', prompt: '', thumbnailPath: '', imagePaths: []);
       },
     );
 
-    // 프리셋이 로드되기 전이나 삭제되었을 경우의 로딩 화면
     if (preset.id.isEmpty) {
       return Scaffold(
           backgroundColor: theme.scaffoldBackgroundColor,
@@ -92,10 +143,8 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 상단 이미지 갤러리 영역
           _buildImageGallery(preset),
 
-          // 하단 콘텐츠 영역
           Expanded(
             child: SingleChildScrollView(
               child: Padding(
@@ -103,7 +152,6 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 제목과 NSFW 뱃지
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       spacing: 8.0,
@@ -166,7 +214,6 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
     );
   }
 
-  /// 이미지 갤러리 위젯
   Widget _buildImageGallery(PromptPreset preset) {
     return AspectRatio(
       aspectRatio: 1 / 1.1,
@@ -178,11 +225,13 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
             itemBuilder: (context, index) {
               final imagePath = preset.imagePaths[index];
               return GestureDetector(
+                onLongPress: () {
+                  _showImageContextMenu(context, preset, imagePath);
+                },
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      // FullScreenViewer에 이미지 리스트 전체와 현재 탭한 이미지의 인덱스를 전달
                       builder: (context) => FullScreenViewer(
                         imagePaths: preset.imagePaths,
                         initialIndex: index,
@@ -201,7 +250,6 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
               );
             },
           ),
-          // 하단 그라데이션 및 페이지 인디케이터
           Positioned(
             bottom: 0,
             left: 0,
@@ -237,7 +285,6 @@ class _PresetDetailScreenState extends ConsumerState<PresetDetailScreen> {
     );
   }
 
-  /// 평점 표시 위젯
   Widget _buildRatingSection(double rating) {
     final theme = Theme.of(context);
     List<Widget> stars = [];

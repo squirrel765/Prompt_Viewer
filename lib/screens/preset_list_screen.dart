@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prompt_viewer/models/prompt_preset.dart';
 import 'package:prompt_viewer/providers/preset_provider.dart';
-import 'package:prompt_viewer/screens/preset_detail_screen.dart'; // 이제 정상적으로 사용됩니다.
+import 'package:prompt_viewer/providers/settings_provider.dart';
+import 'package:prompt_viewer/screens/preset_detail_screen.dart';
 import 'package:prompt_viewer/screens/preset_editor_screen.dart';
 
 class PresetListScreen extends ConsumerStatefulWidget {
@@ -31,10 +32,14 @@ class _PresetListScreenState extends ConsumerState<PresetListScreen> {
   @override
   Widget build(BuildContext context) {
     final List<PromptPreset> presets = ref.watch(presetProvider);
+    final showNsfw = ref.watch(configProvider).showNsfw;
+    final presetsToDisplay = showNsfw
+        ? presets
+        : presets.where((p) => !p.isNsfw).toList();
 
-    final content = presets.isEmpty
+    final content = presetsToDisplay.isEmpty
         ? _buildEmptyView(context)
-        : _buildPresetGridView(presets);
+        : _buildPresetGridView(presetsToDisplay);
 
     if (widget.showAppBar) {
       return Scaffold(
@@ -116,15 +121,12 @@ class _PresetListScreenState extends ConsumerState<PresetListScreen> {
   Widget _buildPresetCard(PromptPreset preset) {
     final theme = Theme.of(context);
     return InkWell(
-      // --- START: 에러 수정 부분 ---
       onTap: () {
-        // [수정] Navigator.push를 사용하여 화면을 올바르게 이동시킵니다.
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => PresetDetailScreen(presetId: preset.id)),
         );
       },
-      // --- END: 에러 수정 부분 ---
       borderRadius: BorderRadius.circular(12.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

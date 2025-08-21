@@ -9,6 +9,7 @@ import 'package:photo_view/photo_view.dart';
 import 'package:prompt_viewer/providers/gallery_provider.dart';
 import 'package:prompt_viewer/providers/settings_provider.dart';
 import 'package:prompt_viewer/screens/full_screen_viewer.dart';
+import 'package:prompt_viewer/screens/metadata_embedding_screen.dart';
 // [핵심 수정] 아래 파일을 import 합니다.
 import 'package:prompt_viewer/services/metadata_parser_service.dart';
 
@@ -171,15 +172,35 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   }
 
   Widget _buildStableDiffusionView() {
+    // [수정] 데이터가 없을 경우 메타데이터 추가 버튼 표시
     if (widget.metadata.a1111Parameters == null || widget.metadata.a1111Parameters!.isEmpty) {
-      return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('Stable Diffusion 데이터가 없습니다.')));
+      return Center(child: Padding(padding: const EdgeInsets.all(32.0), child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Stable Diffusion 데이터가 없습니다.'),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.add_circle_outline),
+            label: const Text('메타데이터 추가'),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => MetadataEmbeddingScreen(imagePath: widget.metadata.path)));
+            },
+          )
+        ],
+      ),));
     }
-    // [수정] 이제 정상적으로 provider를 찾을 수 있습니다.
+
     final parsedData = ref.read(metadataParserProvider).parseA1111Parameters(widget.metadata.a1111Parameters!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildPromptSection('Positive Prompt', parsedData['positive_prompt']),
+        // [수정] 첫 번째 섹션에만 편집 버튼을 추가
+        _buildPromptSection(
+          'Positive Prompt',
+          parsedData['positive_prompt'],
+          isEditable: true,
+          allParams: parsedData,
+        ),
         _buildPromptSection('Negative Prompt', parsedData['negative_prompt']),
         _buildPromptSection('Other Parameters', parsedData['other_params']),
       ],
@@ -187,7 +208,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
   }
 
   Widget _buildComfyUIView() {
-    // [수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final formattedJson = ref.read(metadataParserProvider).formatJson(widget.metadata.comfyUIWorkflow);
     if(formattedJson.contains("데이터가 없습니다")){
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('ComfyUI 데이터가 없습니다.')));
@@ -199,7 +219,6 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     if (widget.metadata.naiComment == null || widget.metadata.naiComment!.isEmpty) {
       return const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('NovelAI 데이터가 없습니다.')));
     }
-    // [수정] 이제 정상적으로 provider를 찾을 수 있습니다.
     final parsedData = ref.read(metadataParserProvider).parseNaiParameters(widget.metadata.naiComment!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,7 +230,8 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
     );
   }
 
-  Widget _buildPromptSection(String title, String? content) {
+  // [수정] 편집 가능 여부와 전체 파라미터를 인자로 받도록 수정
+  Widget _buildPromptSection(String title, String? content, {bool isEditable = false, Map<String, String>? allParams}) {
     if (content == null || content.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -227,15 +247,33 @@ class _DetailScreenState extends ConsumerState<DetailScreen> {
                 title,
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              TextButton.icon(
-                icon: const Icon(Icons.copy_all_outlined, size: 16),
-                label: const Text('Copy'),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: content));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('$title 복사 완료!'), duration: const Duration(seconds: 1)),
-                  );
-                },
+              Row(
+                children: [
+                  // [추가] isEditable이 true일 때만 편집 버튼 표시
+                  if (isEditable)
+                    TextButton.icon(
+                      icon: const Icon(Icons.edit_outlined, size: 16),
+                      label: const Text('Edit'),
+                      onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => MetadataEmbeddingScreen(
+                          imagePath: widget.metadata.path,
+                          initialPositive: allParams?['positive_prompt'],
+                          initialNegative: allParams?['negative_prompt'],
+                          initialOther: allParams?['other_params'],
+                        )));
+                      },
+                    ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.copy_all_outlined, size: 16),
+                    label: const Text('Copy'),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: content));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('$title 복사 완료!'), duration: const Duration(seconds: 1)),
+                      );
+                    },
+                  ),
+                ],
               )
             ],
           ),

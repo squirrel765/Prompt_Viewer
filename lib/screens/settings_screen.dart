@@ -6,8 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:prompt_viewer/providers/gallery_provider.dart';
 import 'package:prompt_viewer/providers/preset_provider.dart';
+import 'package:prompt_viewer/providers/saved_prompts_provider.dart';
 import 'package:prompt_viewer/providers/settings_provider.dart';
 import 'package:prompt_viewer/providers/theme_provider.dart';
+import 'package:prompt_viewer/services/database_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -19,16 +22,23 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _apiKeyController;
+  late final TextEditingController _geminiApiKeyController;
+  late final TextEditingController _tokenController;
 
   @override
   void initState() {
     super.initState();
-    _apiKeyController = TextEditingController(text: ref.read(configProvider).civitaiApiKey ?? '');
+    final config = ref.read(configProvider);
+    _apiKeyController = TextEditingController(text: config.civitaiApiKey ?? '');
+    _geminiApiKeyController = TextEditingController(text: config.geminiApiKey ?? '');
+    _tokenController = TextEditingController(text: config.maxOutputTokens.toString());
   }
 
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _geminiApiKeyController.dispose();
+    _tokenController.dispose();
     super.dispose();
   }
 
@@ -67,7 +77,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  /// [수정] 커스텀 태그 JSON 파일을 가져와서 "파일명"과 함께 저장합니다.
   Future<void> _importCustomTags() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -77,10 +86,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (result != null && result.files.single.path != null) {
       try {
         final file = File(result.files.single.path!);
-        final fileName = result.files.single.name; // 파일명 가져오기
+        final fileName = result.files.single.name;
         final jsonString = await file.readAsString();
 
-        // Notifier에 파일명과 JSON 내용을 함께 전달
         await ref.read(customTagsProvider.notifier).importFromJson(jsonString, fileName);
 
         if (mounted) {
@@ -121,6 +129,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SnackBar(content: Text('가져온 태그를 모두 삭제했습니다.')),
         );
       }
+    }
+  }
+
+  Future<void> _resetAllData() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('모든 데이터 초기화'),
+        content: const Text('정말로 모든 이미지, 프리셋, 설정 데이터를 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text('초기화 실행', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      final db = await DatabaseService.instance.database;
+      await db.delete(DatabaseService.imagesTable);
+      await db.delete(DatabaseService.presetsTable);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      ref.invalidate(galleryProvider);
+      ref.invalidate(presetProvider);
+      ref.invalidate(configProvider);
+      ref.invalidate(savedPromptsProvider);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('모든 데이터가 초기화되었습니다. 앱을 재시작해주세요.')),
+      );
     }
   }
 
@@ -188,7 +231,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
 
-            // --- 태그 라이브러리 섹션 (신규) ---
             _buildSectionHeader('태그 라이브러리'),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -196,7 +238,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 children: [
                   _buildActionButton('커스텀 태그 JSON 가져오기', _importCustomTags, isFullWidth: true),
                   const SizedBox(height: 16),
-                  // [신규] 불러온 태그 목록 관리 UI
                   _buildCustomTagsManagement(),
                   const SizedBox(height: 8),
                   _buildActionButton('가져온 태그 모두 초기화', _clearCustomTags, isDestructive: true, isFullWidth: true),
@@ -229,16 +270,117 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: 'API 키를 입력하면 더 많은 정보를 안정적으로 가져올 수 있습니다.',
             ),
 
-            _buildSectionHeader('기타 설정'),
+            _buildSectionHeader('Gemini API 설정'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: TextField(
+                controller: _geminiApiKeyController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  hintText: 'Gemini API 키 입력 (선택 사항)',
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(128),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onChanged: (value) {
+                  configNotifier.setGeminiApiKey(value.isNotEmpty ? value : null);
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0),
+              child: DropdownButtonFormField<String>(
+                value: appConfig.selectedGeminiModel,
+                decoration: InputDecoration(
+                  labelText: 'Gemini 모델 선택',
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(128),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                items: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.5-pro', 'gemini-2.5-flash']
+                    .map((model) => DropdownMenuItem(
+                  value: model,
+                  child: Text(model),
+                ))
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    configNotifier.setSelectedGeminiModel(value);
+                  }
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('온도 (Temperature)', style: Theme.of(context).textTheme.bodyLarge),
+                      Text(appConfig.temperature.toStringAsFixed(1), style: Theme.of(context).textTheme.bodyMedium),
+                    ],
+                  ),
+                  Slider(
+                    value: appConfig.temperature,
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 10,
+                    label: appConfig.temperature.toStringAsFixed(1),
+                    onChanged: (value) {
+                      configNotifier.setTemperature(value);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 0),
+              child: TextFormField(
+                controller: _tokenController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: '최대 출력 토큰 (Max Tokens)',
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(128),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onChanged: (value) {
+                  final tokens = int.tryParse(value);
+                  if (tokens != null) {
+                    configNotifier.setMaxOutputTokens(tokens);
+                  }
+                },
+              ),
+            ),
+
+            _buildSectionHeader('기타'),
+            // --- START: 핵심 수정 부분 ---
             _buildSettingItem(
               title: '개발자 GitHub',
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
               onTap: () async {
-                final url = Uri.parse('https://github.com'); // TODO: 실제 GitHub 주소로 변경
+                final url = Uri.parse('https://github.com/squirrel765/Prompt_Viewer');
                 if (await canLaunchUrl(url)) {
                   await launchUrl(url, mode: LaunchMode.externalApplication);
                 }
               },
+            ),
+            // --- END: 핵심 수정 부분 ---
+            _buildSettingItem(
+              title: '데이터 초기화',
+              subtitle: '앱의 모든 데이터를 삭제하고 초기 상태로 되돌립니다.',
+              onTap: _resetAllData,
             ),
 
             const SizedBox(height: 40),
@@ -248,7 +390,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  // --- [신규] 커스텀 태그 관리 UI를 생성하는 위젯 ---
   Widget _buildCustomTagsManagement() {
     final customTagSources = ref.watch(customTagsProvider);
     final sourceKeys = customTagSources.keys.toList();
@@ -297,8 +438,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ],
     );
   }
-
-  // --- UI 구성을 위한 헬퍼 메서드들 ---
 
   Widget _buildSectionHeader(String title) {
     return Padding(
